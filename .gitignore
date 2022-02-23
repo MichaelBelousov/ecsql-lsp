@@ -1,0 +1,11 @@
+# logs
+*.log
+
+# node/js package management
+node_modules
+
+# typescript compilation output
+lib/
+
+# native output
+build
