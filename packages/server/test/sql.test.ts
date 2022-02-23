@@ -12,4 +12,7 @@ describe("", () => {
     expect(maybeAliased(ast.value.selectItems.value[1])).to.equal("colB");
     expect(maybeAliased(ast.value.selectItems.value[2])).to.equal("col3");
   });
+  // so the idea would be to pull and cache a revision of https://github.com/iTwin/bis-schemas
+  // and parse the XML there for schema names/aliases, class properties, etc
+  // also checkout the apollo graphql plugin for embedded languages
 })
