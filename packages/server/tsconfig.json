@@ -23,9 +23,8 @@
     "strictNullChecks": true,
     "stripInternal": false,
     "target": "ES2019",
-    "types": ["node"],
+    "types": ["node", "vscode"]
   },
-  "include": [
-    "./src/**/*.ts",
-  ],
+  "include": ["./packages/*/src/**/*.ts"],
+  "exclude": ["./packages/*/test/**/*.ts"]
 }

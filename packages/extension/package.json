@@ -1,0 +1,42 @@
+{
+  "name": "ecsql-lsp-vscode-extension",
+  "version": "0.0.1",
+  "description": "vscode extension to use the ecsql language server",
+  "main": "extension.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/MichaelBelousov/ecsql-lsp.git"
+  },
+  "keywords": [
+    "ecsql",
+    "vscode",
+    "itwinjs"
+  ],
+  "author": "Michael Belousov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MichaelBelousov/ecsql-lsp/issues"
+  },
+  "homepage": "https://github.com/MichaelBelousov/ecsql-lsp#readme",
+  "activationEvents": [
+    "onLanguage:typescript"
+  ],
+  "configuration": {
+    "type": "object",
+    "title": "ECSql Language Server Configuration",
+    "properties": {
+      "ecsql-lsp.fallbackIModelUrl": {
+        "type": "string",
+        "default": "",
+        "description": "if the schema is unknown, try to find it in this iModel"
+      }
+    }
+  },
+  "dependencies": {
+    "@types/vscode": "^1.64.0",
+    "vscode-languageclient": "^7.0.0"
+  }
+}

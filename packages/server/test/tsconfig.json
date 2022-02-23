@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["mocha", "node"],
+    "paths": {
+      "js-sql-parser": ["../src/js-sql-parser.d.ts"]
+    }
+  },
+  "include": ["**/*.ts", "../src/js-sql-parser.d.ts"]
+}
