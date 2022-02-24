@@ -1,0 +1,33 @@
+{
+  "name": "ecsql-lsp-vscode-client",
+  "description": "vscode extension to use the ecsql language server",
+  "author": {
+    "name": "Michael Belousov",
+    "email": "mikemikeb@protonmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/MichaelBelousov/ecsql-lsp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MichaelBelousov/ecsql-lsp/issues"
+  },
+  "homepage": "https://github.com/MichaelBelousov/ecsql-lsp#readme",
+  "keywords": [
+    "ecsql",
+    "vscode",
+    "itwinjs"
+  ],
+  "license": "MIT",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.52.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.52.0",
+    "@vscode/test-electron": "^1.6.1"
+  }
+}

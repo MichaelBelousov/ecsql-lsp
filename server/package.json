@@ -1,27 +1,33 @@
 {
-  "name": "ecsql-lsp",
-  "version": "0.1.0",
+	"name": "ecsql-lsp-server",
   "description": "a language server for the ECSQL language used by iTwin.js",
-  "main": "lib/index.js",
-  "scripts": {
-    "build": "npm run build:typescript",
-    "build:typescript": "tsc 1>&2 --outDir lib",
-    "clean": "rimraf lib",
-    "lint": "eslint --fix src/**/*.ts test/**/*.ts",
-    "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" mocha --timeout 100000 --require ts-node/register test/*.test.ts"
-  },
-  "keywords": [
-    "ecsql",
-    "itwinjs"
-  ],
+	"version": "0.0.1",
   "author": {
     "name": "Michael Belousov",
     "email": "mikemikeb@protonmail.com"
   },
-  "license": "MIT",
-  "//": [
-    "NOTE: need to split up the server and extension into two packages"
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/MichaelBelousov/ecsql-lsp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MichaelBelousov/ecsql-lsp/issues"
+  },
+  "homepage": "https://github.com/MichaelBelousov/ecsql-lsp#readme",
+  "keywords": [
+    "ecsql",
+    "vscode",
+    "itwinjs"
   ],
+	"license": "MIT",
+	"engines": {
+		"node": "*"
+	},
+	"dependencies": {
+    "js-sql-parser": "^1.4.1",
+		"vscode-languageserver": "^7.0.0",
+		"vscode-languageserver-textdocument": "^1.0.1"
+	},
   "devDependencies": {
     "@types/chai": "^4.3.0",
     "@types/fs-extra": "^9.0.13",
@@ -46,13 +52,12 @@
     "ts-node": "^10.4.0",
     "typescript": "^4.5.2"
   },
-  "engines": {
-    "node": ">=10.0"
-  },
-  "engineStrict": true,
-  "dependencies": {
-    "js-sql-parser": "^1.4.1",
-    "vscode-languageserver": "^7.0.0"
+  "scripts": {
+    "build": "npm run build:typescript",
+    "build:typescript": "tsc 1>&2 --outDir lib",
+    "clean": "rimraf lib",
+    "lint": "eslint --fix src/**/*.ts test/**/*.ts",
+    "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" mocha --timeout 100000 --require ts-node/register test/*.test.ts"
   },
   "husky": {
     "hooks": {
