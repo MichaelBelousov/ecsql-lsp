@@ -221,13 +221,16 @@ interface QueryLoc {
 async function findAllQueries(doc: TextDocument) {
 	const text = doc.getText();
 	const results = [];
-	while (true) {
-		const match = /(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g.exec(text);
-		if (match === null) break;
-		const matchEnd = match.index + match[0].length;
+	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
+		const matchEnd = match.index! + match[0].length;
 		const literal = getNextStringLiteral(text, matchEnd);
 		if (literal) {
-			const ast = sqlparser.parse(literal);
+			let ast;
+			try {
+				ast = sqlparser.parse(literal.slice(1, -1));
+			} catch {
+				continue;
+			}
 			results.push({
 				// FIXME: get actual location in literal finding
 				start: matchEnd,
@@ -301,6 +304,9 @@ connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received a file change event');
 });
+
+// FIXME: need to force set the user's  "editor.quickSuggestions": { "strings" }
+// or have a button to help them do it
 
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
