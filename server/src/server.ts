@@ -2,6 +2,13 @@
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
+
+import * as fse from "fs-extra";
+import * as path from "path";
+import * as child_process from "child_process";
+
+import * as xml2js from "xml2js";
+
 import {
 	createConnection,
 	TextDocuments,
@@ -20,6 +27,69 @@ import {
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
+
+
+const cachedBisSchemaRepoPath = path.join(__dirname, "bis-schemas-cache");
+
+if (!fse.existsSync(cachedBisSchemaRepoPath)) {
+	// TODO: make git path configurable or something
+	console.log("caching Bis-Schemas repo");
+	child_process.execFileSync("git", ["clone", "https://github.com/iTwin/bis-schemas", cachedBisSchemaRepoPath]);
+	console.log("done caching Bis-Schemas repo");
+} else {
+	console.log("found existing cached Bis-Schemas repo");
+}
+
+type ECPropertyType = string;
+
+interface Suggestions {
+	schemas: {
+		[schemaName: string]: {
+			[className: string]: {
+				[propertyName: string]: any;
+			}
+		}
+	}
+}
+
+async function buildSuggestions() {
+	const suggestions: Suggestions = { schemas: {} };
+
+	const xmlParser = new xml2js.Parser();
+	// in the future read all unversioned .ecschema.xml files in the repo
+	const bisCoreSchemaPath = path.join(cachedBisSchemaRepoPath, "Domains/Core/BisCore.ecschema.xml")
+	const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath).toString();
+	const bisCoreSchemaXml = await xmlParser.parseStringPromise(bisCoreSchemaText);
+	suggestions.schemas.BisCore = {};
+
+	const unresolvedClasses = new Map<string, any>(bisCoreSchemaXml.ECSchema.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
+	const resolvedClasses = new Map<string, any>();
+
+	function resolveClass(className: string) {
+		if (resolvedClasses.has(className)) return;
+		const classXml = unresolvedClasses.get(className);
+		for (const baseClassName of classXml.BaseClass) {
+			if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
+		}
+		const classSuggestions: Suggestions["schemas"][string][string] = {};
+		for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
+			for (const prop of classXml[xmlPropType]) {
+				classSuggestions[prop.$.propertyName] = prop;
+			}
+		}
+		suggestions.schemas.Biscore[className] = classSuggestions;
+		resolvedClasses.set(className, classSuggestions);
+		unresolvedClasses.delete(className);
+	}
+
+	for (const [className] of unresolvedClasses.keys()) {
+		resolveClass(className)
+	}
+
+	return suggestions;
+}
+
+const suggestionsPromise = buildSuggestions();
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -83,12 +153,13 @@ connection.onInitialized(() => {
 // The example settings
 interface ExampleSettings {
 	maxNumberOfProblems: number;
+	fallbackIModelUrl: string;
 }
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
 // Please note that this is not the case when using this server with the client provided in this example
 // but could happen with other clients.
-const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
+const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000, fallbackIModelUrl: "" };
 let globalSettings: ExampleSettings = defaultSettings;
 
 // Cache the settings of all open documents
@@ -147,33 +218,32 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	const diagnostics: Diagnostic[] = [];
 	while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
 		problems++;
-		const diagnostic: Diagnostic = {
-			severity: DiagnosticSeverity.Warning,
-			range: {
+		const range = {
 				start: textDocument.positionAt(m.index),
 				end: textDocument.positionAt(m.index + m[0].length)
-			},
+			};
+		const diagnostic: Diagnostic = {
+			severity: DiagnosticSeverity.Warning,
+			range,
 			message: `${m[0]} is all uppercase.`,
-			source: 'ex'
-		};
-		if (hasDiagnosticRelatedInformationCapability) {
-			diagnostic.relatedInformation = [
+			source: 'ex',
+			...hasDiagnosticRelatedInformationCapability && { relatedInformation: [
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: {...range},
 					},
 					message: 'Spelling matters'
 				},
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: {...range},
 					},
 					message: 'Particularly for names'
 				}
-			];
-		}
+			]}
+		};
 		diagnostics.push(diagnostic);
 	}
 
@@ -183,34 +253,46 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
-	connection.console.log('We received an file change event');
+	connection.console.log('We received a file change event');
 });
 
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
-	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
+	async (_textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		// The pass parameter contains the position of the text document in
 		// which code complete got requested. For the example we ignore this
 		// info and always provide the same completion items.
-		return [
-			{
-				label: 'TypeScript',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'JavaScript',
-				kind: CompletionItemKind.Text,
-				data: 2
+		const suggestions = await suggestionsPromise;
+		const result: CompletionItem[] = [];
+		let limit = 30;
+		outer: for (const schemaName in suggestions.schemas) {
+			const schema = suggestions.schemas[schemaName];
+			for (const className in schema) {
+				const class_ = schema[className];
+				for (const propertyName in class_) {
+					const property = class_[propertyName];
+					result.push({
+						label: propertyName,
+						insertText: propertyName,
+						kind: CompletionItemKind.Field,
+						data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
+						detail: property.$.extendedTypeName ?? "no extended type",
+						documentation: property.description
+					});
+					limit--;
+					if (limit === 0) break outer;
+				}
 			}
-		];
+		}
+		return result;
 	}
 );
 
 // This handler resolves additional information for the item selected in
 // the completion list.
+/*
 connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
+	async (item: CompletionItem): CompletionItem => {
 		if (item.data === 1) {
 			item.detail = 'TypeScript details';
 			item.documentation = 'TypeScript documentation';
@@ -221,6 +303,7 @@ connection.onCompletionResolve(
 		return item;
 	}
 );
+*/
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events

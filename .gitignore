@@ -9,3 +9,6 @@ lib/
 
 # native output
 build
+
+# typescript output
+out/

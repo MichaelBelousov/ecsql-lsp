@@ -1,4 +1,3 @@
-
 import * as sqlparser from "js-sql-parser";
 import { expect } from "chai";
 

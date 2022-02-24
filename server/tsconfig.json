@@ -7,7 +7,10 @@
 		"sourceMap": true,
 		"strict": true,
 		"outDir": "out",
-		"rootDir": "src"
+		"rootDir": "src",
+		"paths": {
+			"js-sql-parser": ["./src/js-sql-parser.d.ts"]
+		}
 	},
 	"include": ["src"],
 	"exclude": ["node_modules", ".vscode-test"]
