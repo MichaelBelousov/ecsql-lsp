@@ -37,7 +37,7 @@ if (!fse.existsSync(cachedBisSchemaRepoPath)) {
 	child_process.execFileSync("git", ["clone", "https://github.com/iTwin/bis-schemas", cachedBisSchemaRepoPath]);
 	console.log("done caching Bis-Schemas repo");
 } else {
-	console.log("found existing cached Bis-Schemas repo");
+	console.log(`found existing cached Bis-Schemas repo at: ${cachedBisSchemaRepoPath}`);
 }
 
 type ECPropertyType = string;
@@ -68,21 +68,21 @@ async function buildSuggestions() {
 	function resolveClass(className: string) {
 		if (resolvedClasses.has(className)) return;
 		const classXml = unresolvedClasses.get(className);
-		for (const baseClassName of classXml.BaseClass) {
+		for (const baseClassName of classXml?.BaseClass ?? []) {
 			if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
 		}
 		const classSuggestions: Suggestions["schemas"][string][string] = {};
 		for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
-			for (const prop of classXml[xmlPropType]) {
+			for (const prop of classXml?.[xmlPropType] ?? []) {
 				classSuggestions[prop.$.propertyName] = prop;
 			}
 		}
-		suggestions.schemas.Biscore[className] = classSuggestions;
+		suggestions.schemas.BisCore[className] = classSuggestions;
 		resolvedClasses.set(className, classSuggestions);
 		unresolvedClasses.delete(className);
 	}
 
-	for (const [className] of unresolvedClasses.keys()) {
+	for (const className of unresolvedClasses.keys()) {
 		resolveClass(className)
 	}
 
@@ -258,10 +258,16 @@ connection.onDidChangeWatchedFiles(_change => {
 
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
-	async (_textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
+	async (docPos: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		// The pass parameter contains the position of the text document in
 		// which code complete got requested. For the example we ignore this
 		// info and always provide the same completion items.
+		const fullDoc = documents.get(docPos.textDocument.uri)!;
+		const docText = fullDoc.getText();
+		const offset = fullDoc.offsetAt(docPos.position);
+		const textBehindPos = docText.slice(0, offset);
+		const currentWordMatch = /\w+$/.exec(textBehindPos);
+		const currentWord = currentWordMatch?.[0] ?? "";
 		const suggestions = await suggestionsPromise;
 		const result: CompletionItem[] = [];
 		let limit = 30;
@@ -270,6 +276,7 @@ connection.onCompletion(
 			for (const className in schema) {
 				const class_ = schema[className];
 				for (const propertyName in class_) {
+					if (!propertyName.startsWith(currentWord)) continue;
 					const property = class_[propertyName];
 					result.push({
 						label: propertyName,
@@ -277,7 +284,7 @@ connection.onCompletion(
 						kind: CompletionItemKind.Field,
 						data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
 						detail: property.$.extendedTypeName ?? "no extended type",
-						documentation: property.description
+						documentation: property.$.description,
 					});
 					limit--;
 					if (limit === 0) break outer;
