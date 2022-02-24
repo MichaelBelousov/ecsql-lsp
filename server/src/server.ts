@@ -8,6 +8,7 @@ import * as path from "path";
 import * as child_process from "child_process";
 
 import * as xml2js from "xml2js";
+import * as sqlparser from "js-sql-parser";
 
 import {
 	createConnection,
@@ -124,7 +125,13 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			// Tell the client that this server supports code completion.
 			completionProvider: {
-				resolveProvider: true
+				resolveProvider: true,
+				/*
+				triggerCharacters: [
+					...new Array(26).fill(undefined).map((_, i) => String.fromCharCode('a'.charCodeAt(0) + i)),
+					...new Array(26).fill(undefined).map((_, i) => String.fromCharCode('A'.charCodeAt(0) + i))
+				],
+				*/
 			}
 		}
 	};
@@ -205,6 +212,45 @@ documents.onDidChangeContent(change => {
 	validateTextDocument(change.document);
 });
 
+interface QueryLoc {
+	start: number;
+	end: number;
+	ast: any;
+}
+
+async function findAllQueries(doc: TextDocument) {
+	const text = doc.getText();
+	const results = [];
+	while (true) {
+		const match = /(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g.exec(text);
+		if (match === null) break;
+		const matchEnd = match.index + match[0].length;
+		const literal = getNextStringLiteral(text, matchEnd);
+		if (literal) {
+			const ast = sqlparser.parse(literal);
+			results.push({
+				// FIXME: get actual location in literal finding
+				start: matchEnd,
+				end: matchEnd + literal.length,
+				ast,
+			});
+		}
+	}
+	return results;
+}
+
+// start only supporting double quotes, need to support single and backtick with nesting
+function getNextStringLiteral(text: string, offset: number): string | undefined {
+	//const stack = [];
+	//let state = '/'
+	//let last = undefined;
+	//for (const chr of text) {
+		//if ()
+		//last = chr;
+	//}
+	return /".*(?<!\\)"/.exec(text.slice(offset))?.[0] ?? undefined;
+}
+
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	// In this simple example we get the settings for every validate run.
 	const settings = await getDocumentSettings(textDocument.uri);
@@ -259,18 +305,28 @@ connection.onDidChangeWatchedFiles(_change => {
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
 	async (docPos: TextDocumentPositionParams): Promise<CompletionItem[]> => {
-		// The pass parameter contains the position of the text document in
-		// which code complete got requested. For the example we ignore this
-		// info and always provide the same completion items.
 		const fullDoc = documents.get(docPos.textDocument.uri)!;
-		const docText = fullDoc.getText();
+
+		const queries = await findAllQueries(fullDoc);
+		if (queries.length === 0) return [];
+
 		const offset = fullDoc.offsetAt(docPos.position);
+		const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
+		if (queryWeAreIn === undefined) return [];
+
+		const selectItemWeAreIn = queryWeAreIn.ast.value.selectItems.value.find(
+			(selectItem: any) => queryWeAreIn.start + selectItem.start <= offset && queryWeAreIn.end + selectItem.end >= offset
+		);
+
+		const docText = fullDoc.getText();
 		const textBehindPos = docText.slice(0, offset);
 		const currentWordMatch = /\w+$/.exec(textBehindPos);
 		const currentWord = currentWordMatch?.[0] ?? "";
 		const suggestions = await suggestionsPromise;
+
 		const result: CompletionItem[] = [];
-		let limit = 30;
+		let limit = 100;
+
 		outer: for (const schemaName in suggestions.schemas) {
 			const schema = suggestions.schemas[schemaName];
 			for (const className in schema) {
