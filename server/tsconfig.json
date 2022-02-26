@@ -1,17 +1,18 @@
 {
-	"compilerOptions": {
-		"target": "es2019",
-		"lib": ["ES2019"],
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"sourceMap": true,
-		"strict": true,
-		"outDir": "out",
-		"rootDir": "src",
-		"paths": {
-			"js-sql-parser": ["./src/js-sql-parser.d.ts"]
-		}
-	},
-	"include": ["src"],
-	"exclude": ["node_modules", ".vscode-test"]
+  "compilerOptions": {
+    "target": "es2019",
+    "lib": ["ES2019"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "strict": true,
+    "outDir": "out",
+    "rootDir": "src",
+    "paths": {
+      "js-sql-parser": ["./src/js-sql-parser.d.ts"],
+      "pg-query-parser": ["./src/pg-query-parser.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", ".vscode-test"]
 }

@@ -1,0 +1,5 @@
+
+packages
+  - client
+  - server
+  - tree-sitter-sqlite

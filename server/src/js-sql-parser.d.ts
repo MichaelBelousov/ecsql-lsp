@@ -20,7 +20,7 @@ declare module "js-sql-parser" {
     stringify(ast: SqlAst): string;
   }
 
-  const parser: Parser;
+  const jssqlparser: Parser;
 
-  export = parser;
+  export = jssqlparser;
 }

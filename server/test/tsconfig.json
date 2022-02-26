@@ -3,8 +3,12 @@
   "compilerOptions": {
     "types": ["mocha", "node"],
     "paths": {
-      "js-sql-parser": ["../src/js-sql-parser.d.ts"]
+      "js-sql-parser": ["../src/js-sql-parser.d.ts"],
+      "pg-query-parser": ["../src/pg-query-parser.d.ts"],
+      "sql-parse": ["../src/sql-parse.d.ts"],
+      "tree-sitter-sql": ["../src/tree-sitter-sql.d.ts"],
+      "tree-sitter-sqlite": ["../src/tree-sitter-sqlite.d.ts"]
     }
   },
-  "include": ["**/*.ts", "../src/js-sql-parser.d.ts"]
+  "include": ["**/*.ts", "../src/*.d.ts"]
 }
