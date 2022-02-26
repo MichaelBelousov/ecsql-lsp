@@ -9,8 +9,7 @@
     "outDir": "out",
     "rootDir": "src",
     "paths": {
-      "js-sql-parser": ["./src/js-sql-parser.d.ts"],
-      "pg-query-parser": ["./src/pg-query-parser.d.ts"]
+      "tree-sitter-sql": ["../src/tree-sitter-sql.d.ts"]
     }
   },
   "include": ["src"],

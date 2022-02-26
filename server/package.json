@@ -24,11 +24,6 @@
     "node": "*"
   },
   "dependencies": {
-    "js-sql-parser": "^1.4.1",
-    "node-sql-parser": "^4.1.1",
-    "pg-query-parser": "^0.3.0",
-    "sql-parse": "^0.1.5",
-    "sqlite-parser": "^1.0.1",
     "tree-sitter": "^0.20.0",
     "tree-sitter-sql": "workspace:*",
     "vscode-languageserver": "^7.0.0",
