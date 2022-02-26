@@ -1,5 +1,7 @@
 
-packages
+packages:
   - client
   - server
-  - tree-sitter-sqlite
+  - tree-sitter-sql
+  # exclude git repos in extension compilation output
+  - '!server/out/**'

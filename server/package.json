@@ -30,7 +30,7 @@
     "sql-parse": "^0.1.5",
     "sqlite-parser": "^1.0.1",
     "tree-sitter": "^0.20.0",
-    "tree-sitter-sqlite": "workspace:*",
+    "tree-sitter-sql": "workspace:*",
     "vscode-languageserver": "^7.0.0",
     "vscode-languageserver-textdocument": "^1.0.1",
     "xml2js": "^0.4.23"

@@ -1,3 +1,6 @@
 [submodule "tree-sitter-sqlite"]
 	path = tree-sitter-sqlite
 	url = https://github.com/dhcmrlchtdj/tree-sitter-sqlite.git
+[submodule "tree-sitter-sql"]
+	path = tree-sitter-sql
+	url = ./tree-sitter-sql
