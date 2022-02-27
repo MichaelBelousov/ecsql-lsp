@@ -1,7 +1,7 @@
 import * as TreeSitterParser from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
 import { assert, expect } from "chai";
-import { getCurrentSelectStatement } from "../src/server";
+import { getCurrentSelectStatement, getQueriedProperties } from "../src/server";
 
 describe.only("tree-sitter-sql", () => {
   it("parsed column names", () => {
@@ -21,7 +21,7 @@ describe.only("tree-sitter-sql", () => {
   });
 });
 
-describe.only("getCurrentSelectStatement", () => {
+describe("getCurrentSelectStatement", () => {
   it("understand inner query", () => {
     const parser = new TreeSitterParser();
     parser.setLanguage(TreeSitterSql);
@@ -30,9 +30,23 @@ describe.only("getCurrentSelectStatement", () => {
     `;
     const ast = parser.parse(source);
     const [firstSelectOffset, secondSelectOffset] = [...source.matchAll(/SELECT/g)].map(m => m.index!);
-    const outerSelectResult = getCurrentSelectStatement(firstSelectOffset, { ast, start: 0, end: source.length + 1, });
+    const outerSelectResult = getCurrentSelectStatement(firstSelectOffset, { ast, start: 0, end: source.length + 1, src: source });
     expect(outerSelectResult?.tables).to.deep.equal(["some.table", "joiner"]);
-    const innerSelectResult = getCurrentSelectStatement(secondSelectOffset, { ast, start: 0, end: source.length + 1, });
+    const innerSelectResult = getCurrentSelectStatement(secondSelectOffset, { ast, start: 0, end: source.length + 1, src: source });
     expect(innerSelectResult?.tables).to.deep.equal(["Y"]);
+  });
+});
+
+describe("getQueriedProperties", () => {
+  it("simple test", () => {
+    const parser = new TreeSitterParser();
+    parser.setLanguage(TreeSitterSql);
+    const source = `
+      SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
+    `;
+    const ast = parser.parse(source);
+    expect(getQueriedProperties({ ast, start: 0, end: source.length + 1, src: source })).to.deep.equal([
+      "col1", "col2", "X" // FIXME: selecting "X" is kinda a bug tbh but whatever for now
+    ]);
   });
 });

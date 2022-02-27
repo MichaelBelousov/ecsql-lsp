@@ -27,7 +27,7 @@ export const selectStatementsQuery = new TreeSitter.Query(
 	"(select_statement (from_clause (identifier) @from-name)? @from (join_clause . (identifier) @join-name)* @joins) @select"
 );
 
-export function getCurrentSelectStatement(cursorOffsetInSql: number, queryInSource: QueryLoc): SelectStatementMatch | undefined {
+export function getCurrentSelectStatement(cursorOffsetInSql: number, queryInSource: SourceQuery): SelectStatementMatch | undefined {
 	const matches = selectStatementsQuery.matches(queryInSource.ast.rootNode);
 	const current = matches.reduce(
 		(prev, match) =>
@@ -51,17 +51,129 @@ export function getCurrentSelectStatement(cursorOffsetInSql: number, queryInSour
 	};
 }
 
-export const columnsQuery = new TreeSitter.Query(TreeSitterSql, "(select_clause_body [(identifier) (alias)] @col)");
+export const queriedPropsQuery = new TreeSitter.Query(
+	TreeSitterSql,
+	'(select_clause_body [(identifier) (alias (identifier) . "AS" . (identifier))] @col)'
+);
 
-interface QueryLoc {
+/** get the names of properties queried for */
+export function getQueriedProperties(query: SourceQuery): string[] {
+	const matches = queriedPropsQuery.matches(query.ast.rootNode);
+	return matches.map((match) =>
+    match.captures[0].node.type === "alias"
+      ? match.captures[0].node.namedChild(0)!.text!
+      : match.captures[0].node.text!
+  );
+}
+
+export const queriedNamesQuery = new TreeSitter.Query(
+	TreeSitterSql,
+	'(select_clause_body [(identifier) (alias (identifier) .)] @col)'
+);
+
+/** get the alias names in a query */
+export function getAliasNames(query: SourceQuery): string[] {
+	const matches = queriedNamesQuery.matches(query.ast.rootNode);
+	return matches.map((match) =>
+    match.captures[0].node.type === "alias"
+      ? match.captures[0].node.namedChild(0)!.text!
+      : match.captures[0].node.text!
+  );
+}
+
+/** given a (partial) query, guess the classes it wants to query */
+export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery): ECClass[] {
+	const queriedProps = getQueriedProperties(query);
+	const classes = new Set<ECClass>();
+	for (const queriedProp of queriedProps) {
+		for (const ecclass of suggestions.propertyToContainingClasses.get(queriedProp) ?? []) {
+			classes.add(ecclass);
+		}
+	}
+	return [...classes];
+}
+
+export function getQueryEditClauseType(query: SourceQuery, cursor: number): "FROM" | "JOIN" | "SELECT" | "ON" | "WHERE" | "GROUP BY" | undefined {
+	const prevKeyword = /(FROM|JOIN|SELECT|ON|WHERE|GROUP BY)[^);]*$/.exec(query.src.slice(0, cursor));
+	if (prevKeyword === null) return undefined;
+}
+
+export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number): CompletionItem[] | undefined {
+	const editingClauseType = getQueryEditClauseType(query, cursor);
+	if (editingClauseType === undefined)
+		return undefined;
+	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
+		return guessClasses(suggestions, query).map(({name, schema, data}) => ({
+			label: name,
+			insertText: name,
+			kind: CompletionItemKind.Class,
+			//data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
+			detail: `${schema}.${name}`,
+			documentation: data.$.description,
+		}));
+	}
+	else if (["ON", "WHERE", "SELECT"].includes(editingClauseType)) {
+		const guessedClasses = guessClasses(suggestions, query);
+		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name === className);
+		const guessedProperties: {propertyName: string; data: any}[] = [];
+		for (const schemaName in suggestions.schemas) {
+			for (const className in suggestions.schemas.BisCore) {
+				if (!includeClass(className)) continue;
+				const classSuggestions = suggestions.schemas[schemaName][className];
+				for (const propertyName in classSuggestions) {
+					const property = classSuggestions[propertyName];
+					guessedProperties.push({
+						propertyName,
+						data: property,
+					});
+				}
+			}
+		}
+		if (editingClauseType === "SELECT") {
+			// FIXME: this will match classes that have the same name across schemas
+			return guessedProperties.map(({propertyName, data}) => ({
+				label: propertyName,
+				insertText: propertyName,
+				kind: CompletionItemKind.Field,
+				//data: `${schemaName}.${className}.${propertyName}`,
+				detail: data.$.extendedTypeName ?? "no extended type",
+				documentation: data.$.description,
+			}));
+		} else if (editingClauseType === "ON" || editingClauseType === "WHERE") {
+			const aliases = getAliasNames(query);
+			return [
+				...guessedProperties.map(({propertyName, data}) => ({
+						label: propertyName,
+						insertText: propertyName,
+						kind: CompletionItemKind.Field,
+						//data: `${schemaName}.${className}.${propertyName}`,
+						detail: data.$.extendedTypeName ?? "no extended type",
+						documentation: data.$.description,
+				})),
+				...aliases.map((alias) => ({
+						label: alias,
+						insertText: alias,
+						kind: CompletionItemKind.Field,
+						//data: `${schemaName}.${className}.${propertyName}`,
+						// TODO: generate alias data from mapping
+						//detail: data.$.extendedTypeName ?? "no extended type",
+						//documentation: data.$.description,
+				})),
+			];
+		}
+	}
+}
+
+interface SourceQuery {
 	start: number;
 	end: number;
 	ast: TreeSitter.Tree;
+	src: string;
 }
 
-function findAllQueries(doc: TextDocument): QueryLoc[] {
+function findAllQueries(doc: TextDocument): SourceQuery[] {
 	const text = doc.getText();
-	const results: QueryLoc[] = [];
+	const results: SourceQuery[] = [];
 	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
 		const matchEnd = match.index! + match[0].length;
 		const literal = getNextStringLiteral(text, matchEnd);
@@ -78,6 +190,7 @@ function findAllQueries(doc: TextDocument): QueryLoc[] {
 				// FIXME: get actual location in literal finding
 				start: matchEnd,
 				end: matchEnd + literal.length,
+				src: source,
 				ast,
 			});
 		}
@@ -118,9 +231,15 @@ import {
 
 const cachedBisSchemaRepoPath = path.join(__dirname, "bis-schemas-cache");
 
-type ECPropertyType = string;
+interface ECClass {
+	schema: string;
+	name: string;
+	/** raw xml data */
+	data: any;
+}
 
-interface Suggestions {
+interface SuggestionsCache {
+	propertyToContainingClasses: Map<string, Set<ECClass>>,
 	schemas: {
 		[schemaName: string]: {
 			[className: string]: {
@@ -141,7 +260,7 @@ function main() {
 	}
 
 	async function buildSuggestions() {
-		const suggestions: Suggestions = { schemas: {} };
+		const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
 
 		const xmlParser = new xml2js.Parser();
 		// in the future read all unversioned .ecschema.xml files in the repo
@@ -156,18 +275,30 @@ function main() {
 		function resolveClass(className: string) {
 			if (resolvedClasses.has(className)) return;
 			const classXml = unresolvedClasses.get(className);
-			for (const baseClassName of classXml?.BaseClass ?? []) {
-				if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
-			}
-			const classSuggestions: Suggestions["schemas"][string][string] = {};
+			const classSuggestions: SuggestionsCache["schemas"][string][string] = {};
 			for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
 				for (const prop of classXml?.[xmlPropType] ?? []) {
-					classSuggestions[prop.$.propertyName] = prop;
+					const propName = prop.$.propertyName;
+					classSuggestions[propName] = prop;
+					let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName);
+					if (thisPropNameContainingClasses === undefined) {
+						thisPropNameContainingClasses = new Set();
+						suggestions.propertyToContainingClasses.set(propName, thisPropNameContainingClasses);
+					}
+					thisPropNameContainingClasses.add({ schema: "BisCore", name: className, data: classXml });
+				}
+			}
+			for (const baseClassName of classXml?.BaseClass ?? []) {
+				if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
+				for (const baseClassPropName in suggestions.schemas.BisCore[baseClassName]) {
+					const baseClassProp = suggestions.schemas.BisCore[baseClassName][baseClassPropName];
+					classSuggestions[baseClassPropName] = baseClassProp;
 				}
 			}
 			suggestions.schemas.BisCore[className] = classSuggestions;
 			resolvedClasses.set(className, classSuggestions);
 			unresolvedClasses.delete(className);
+			return classXml;
 		}
 
 		for (const className of unresolvedClasses.keys()) {
@@ -213,12 +344,6 @@ function main() {
 				// Tell the client that this server supports code completion.
 				completionProvider: {
 					resolveProvider: true,
-					/*
-					triggerCharacters: [
-						...new Array(26).fill(undefined).map((_, i) => String.fromCharCode('a'.charCodeAt(0) + i)),
-						...new Array(26).fill(undefined).map((_, i) => String.fromCharCode('A'.charCodeAt(0) + i))
-					],
-					*/
 				}
 			}
 		};
@@ -375,9 +500,8 @@ function main() {
 			const suggestions = await suggestionsPromise;
 
 			const result: CompletionItem[] = [];
-			let limit = 100;
 
-			outer: for (const schemaName in suggestions.schemas) {
+			for (const schemaName in suggestions.schemas) {
 				const schema = suggestions.schemas[schemaName];
 				for (const className in schema) {
 					const class_ = schema[className];
@@ -392,8 +516,6 @@ function main() {
 							detail: property.$.extendedTypeName ?? "no extended type",
 							documentation: property.$.description,
 						});
-						limit--;
-						if (limit === 0) break outer;
 					}
 				}
 			}
