@@ -1,18 +1,24 @@
 import * as TreeSitterParser from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
 import { assert, expect } from "chai";
-import { getCurrentSelectStatement, getQueriedProperties } from "../src/server";
+import { getCurrentSelectStatement, getQueriedProperties, processSchemaForSuggestions, SourceQuery, suggestForQueryEdit, SuggestionsCache } from "../src/server";
+import { CompletionItemKind } from 'vscode-languageserver';
 
-describe.only("tree-sitter-sql", () => {
+const parser = new TreeSitterParser();
+parser.setLanguage(TreeSitterSql);
+
+function sourceToQuery(source: string): SourceQuery {
+  const ast = parser.parse(source);
+  return { ast, start: 0, end: source.length + 1, src: source }
+}
+
+describe("tree-sitter-sql", () => {
   it("parsed column names", () => {
-    const parser = new TreeSitterParser();
-    parser.setLanguage(TreeSitterSql);
-    const source = `
-      SELECT col1, col2 AS colB, (SELECT 1) AS col3 FROM some.table
-    `;
-    const ast = parser.parse(source);
     const query = new TreeSitterParser.Query(TreeSitterSql, "(select_clause_body [(identifier) (alias)] @col)");
-    const matches = query.matches(ast.rootNode);
+    const source = sourceToQuery(`
+      SELECT col1, col2 AS colB, (SELECT 1) AS col3 FROM some.table
+    `);
+    const matches = query.matches(source.ast.rootNode);
     console.log("test2");
     const dealias = (obj: any) => (obj.type === "alias" ? obj.lastNamedChild : obj).text;
     expect(dealias(matches[0].captures[0].node)).to.equal("col1");
@@ -23,30 +29,116 @@ describe.only("tree-sitter-sql", () => {
 
 describe("getCurrentSelectStatement", () => {
   it("understand inner query", () => {
-    const parser = new TreeSitterParser();
-    parser.setLanguage(TreeSitterSql);
-    const source = `
+    const source = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
-    `;
-    const ast = parser.parse(source);
-    const [firstSelectOffset, secondSelectOffset] = [...source.matchAll(/SELECT/g)].map(m => m.index!);
-    const outerSelectResult = getCurrentSelectStatement(firstSelectOffset, { ast, start: 0, end: source.length + 1, src: source });
+    `);
+    const [firstSelectOffset, secondSelectOffset] = [...source.src.matchAll(/SELECT/g)].map(m => m.index!);
+    const outerSelectResult = getCurrentSelectStatement(firstSelectOffset, source);
     expect(outerSelectResult?.tables).to.deep.equal(["some.table", "joiner"]);
-    const innerSelectResult = getCurrentSelectStatement(secondSelectOffset, { ast, start: 0, end: source.length + 1, src: source });
+    const innerSelectResult = getCurrentSelectStatement(secondSelectOffset, source);
     expect(innerSelectResult?.tables).to.deep.equal(["Y"]);
   });
 });
 
 describe("getQueriedProperties", () => {
   it("simple test", () => {
-    const parser = new TreeSitterParser();
-    parser.setLanguage(TreeSitterSql);
-    const source = `
+    const query = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
-    `;
-    const ast = parser.parse(source);
-    expect(getQueriedProperties({ ast, start: 0, end: source.length + 1, src: source })).to.deep.equal([
+    `);
+    expect(getQueriedProperties(query)).to.deep.equal([
       "col1", "col2", "X" // FIXME: selecting "X" is kinda a bug tbh but whatever for now
     ]);
+  });
+});
+
+describe("suggestForQueryEdit", async () => {
+  it("simple", async () => {
+    const query = sourceToQuery(`
+      SELECT G FROM MySchema.A
+    `);
+
+    const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+
+    await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
+      <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
+        <ECEntityClass typeName="A" modifier="Sealed" displayLabel="class A" description="description of class A">
+          <ECProperty propertyName="G" typeName="string" description="Description of property G" />
+          <ECProperty propertyName="H" typeName="string" description="Description of property H" />
+        </ECEntityClass>
+        <ECEntityClass typeName="B" modifier="Sealed" displayLabel="class B" description="description of class B">
+          <ECProperty propertyName="I" typeName="string" description="Description of property I" />
+          <ECProperty propertyName="J" typeName="string" description="Description of property J" />
+        </ECEntityClass>
+      </ECSchema>`,
+      suggestions
+    );
+
+    expect(
+      suggestForQueryEdit(suggestions, query, query.src.indexOf("G"))
+    ).to.deep.equal(
+      // FIXME: should not recommend an proeperty that is already selected (G)
+      [{
+        label: "G",
+        kind: CompletionItemKind.Field,
+        insertText: "G",
+        documentation: "Description of property G",
+        detail: undefined
+      },
+      {
+        label: "H",
+        kind: CompletionItemKind.Field,
+        insertText: "H",
+        documentation: "Description of property H",
+        detail: undefined
+      }]
+    );
+
+    expect(
+      suggestForQueryEdit(suggestions, query, query.src.indexOf("A"))
+    ).to.deep.equal(
+      // FIXME: should not recommend a table already in the FROM clause (A)
+      [{
+        label: "MySchema.A",
+        kind: CompletionItemKind.Class,
+        insertText: "MySchema.A",
+        documentation: "description of class A",
+        detail: "class A"
+      }]
+      // B isn't suggested because none of its properties are selected by SELECT
+    )
+  });
+
+  it("empty from", async () => {
+    const query = sourceToQuery(`
+      SELECT I FROM
+    `);
+
+    const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+
+    await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
+      <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
+        <ECEntityClass typeName="A" modifier="Sealed" displayLabel="class A" description="description of class A">
+          <ECProperty propertyName="G" typeName="string" description="Description of property G" />
+          <ECProperty propertyName="H" typeName="string" description="Description of property H" />
+        </ECEntityClass>
+        <ECEntityClass typeName="B" modifier="Sealed" displayLabel="class B" description="description of class B">
+          <ECProperty propertyName="I" typeName="string" description="Description of property I" />
+          <ECProperty propertyName="J" typeName="string" description="Description of property J" />
+        </ECEntityClass>
+      </ECSchema>`,
+      suggestions
+    );
+
+    expect(
+      suggestForQueryEdit(suggestions, query, query.src.length - 1)
+    ).to.deep.equal(
+      [{
+        label: "MySchema.B",
+        kind: CompletionItemKind.Class,
+        insertText: "MySchema.B",
+        documentation: "description of class B",
+        detail: "class B"
+      }]
+    )
   });
 });

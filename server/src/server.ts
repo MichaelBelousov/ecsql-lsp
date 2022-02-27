@@ -93,9 +93,12 @@ export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery):
 	return [...classes];
 }
 
-export function getQueryEditClauseType(query: SourceQuery, cursor: number): "FROM" | "JOIN" | "SELECT" | "ON" | "WHERE" | "GROUP BY" | undefined {
-	const prevKeyword = /(FROM|JOIN|SELECT|ON|WHERE|GROUP BY)[^);]*$/.exec(query.src.slice(0, cursor));
-	if (prevKeyword === null) return undefined;
+type SqlKeywordString = "FROM" | "JOIN" | "SELECT" | "ON" | "WHERE" | "GROUP BY";
+
+export function getQueryEditClauseType(query: SourceQuery, cursor: number): SqlKeywordString | undefined {
+	// TODO: use lazy-from's .last here
+	const prevKeyword = [...query.src.slice(0, cursor).matchAll(/FROM|JOIN|SELECT|ON|WHERE|GROUP BY|;|\)/g)].pop();
+	return prevKeyword?.[0] as undefined | SqlKeywordString;
 }
 
 export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number): CompletionItem[] | undefined {
@@ -106,19 +109,21 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
 		return guessClasses(suggestions, query).map(({name, schema, data}) => ({
-			label: name,
-			insertText: name,
+			label: `${schema}.${name}`,
+			insertText: `${schema}.${name}`,
 			kind: CompletionItemKind.Class,
 			//data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
-			detail: `${schema}.${name}`,
+			detail: data.$.displayLabel,
 			documentation: data.$.description,
 		}));
 	} else if (isEditingSelectClause || isEditingConditionClause) {
+		// TODO: do not suggest properties that they already have listed
+		// TODO: suggest '*'
 		const guessedClasses = guessClasses(suggestions, query);
 		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name === className);
 		const guessedProperties: {propertyName: string; data: any}[] = [];
 		for (const schemaName in suggestions.schemas) {
-			for (const className in suggestions.schemas.BisCore) {
+			for (const className in suggestions.schemas[schemaName]) {
 				if (!includeClass(className)) continue;
 				const classSuggestions = suggestions.schemas[schemaName][className];
 				for (const propertyName in classSuggestions) {
@@ -137,7 +142,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 				insertText: propertyName,
 				kind: CompletionItemKind.Field,
 				//data: `${schemaName}.${className}.${propertyName}`,
-				detail: data.$.extendedTypeName ?? "no extended type",
+				detail: data.$.displayLabel,
 				documentation: data.$.description,
 			}));
 		} else {
@@ -148,14 +153,13 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 						insertText: propertyName,
 						kind: CompletionItemKind.Field,
 						//data: `${schemaName}.${className}.${propertyName}`,
-						detail: data.$.extendedTypeName ?? "no extended type",
+						detail: data.$.displayLabel,
 						documentation: data.$.description,
 				})),
 				...aliases.map((alias) => ({
 						label: alias,
 						insertText: alias,
 						kind: CompletionItemKind.Field,
-						//data: `${schemaName}.${className}.${propertyName}`,
 						// TODO: generate alias data from mapping
 						//detail: data.$.extendedTypeName ?? "no extended type",
 						//documentation: data.$.description,
@@ -165,14 +169,14 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	}
 }
 
-interface SourceQuery {
+export interface SourceQuery {
 	start: number;
 	end: number;
 	ast: TreeSitter.Tree;
 	src: string;
 }
 
-function findAllQueries(doc: TextDocument): SourceQuery[] {
+export function findAllQueries(doc: TextDocument): SourceQuery[] {
 	const text = doc.getText();
 	const results: SourceQuery[] = [];
 	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
@@ -239,7 +243,7 @@ interface ECClass {
 	data: any;
 }
 
-interface SuggestionsCache {
+export interface SuggestionsCache {
 	propertyToContainingClasses: Map<string, Set<ECClass>>,
 	schemas: {
 		[schemaName: string]: {
@@ -250,63 +254,69 @@ interface SuggestionsCache {
 	}
 }
 
+export async function processSchemaForSuggestions(schemaText: string, suggestions: SuggestionsCache): Promise<void> {
+	const xmlParser = new xml2js.Parser();
+	const schemaXml = await xmlParser.parseStringPromise(schemaText);
+	const schemaName = schemaXml.ECSchema.$.schemaName;
+	suggestions.schemas[schemaName] = {};
+
+	const unresolvedClasses = new Map<string, any>(schemaXml.ECSchema.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
+	const resolvedClasses = new Map<string, any>();
+
+	function resolveClass(className: string) {
+		if (resolvedClasses.has(className)) return;
+		const classXml = unresolvedClasses.get(className);
+		const classSuggestions: SuggestionsCache["schemas"][string][string] = {};
+		for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
+			for (const prop of classXml?.[xmlPropType] ?? []) {
+				const propName = prop.$.propertyName;
+				classSuggestions[propName] = prop;
+				let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName);
+				if (thisPropNameContainingClasses === undefined) {
+					thisPropNameContainingClasses = new Set();
+					suggestions.propertyToContainingClasses.set(propName, thisPropNameContainingClasses);
+				}
+				thisPropNameContainingClasses.add({ schema: schemaName, name: className, data: classXml });
+			}
+		}
+		for (const baseClassName of classXml?.BaseClass ?? []) {
+			if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
+			for (const baseClassPropName in suggestions.schemas[schemaName][baseClassName]) {
+				const baseClassProp = suggestions.schemas[schemaName][baseClassName][baseClassPropName];
+				classSuggestions[baseClassPropName] = baseClassProp;
+			}
+		}
+		suggestions.schemas[schemaName][className] = classSuggestions;
+		resolvedClasses.set(className, classSuggestions);
+		unresolvedClasses.delete(className);
+		return classXml;
+	}
+
+	for (const className of unresolvedClasses.keys()) {
+		resolveClass(className)
+	}
+}
+
+async function buildSuggestions() {
+	const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+	// in the future read all unversioned .ecschema.xml files in the repo
+	const bisCoreSchemaPath = path.join(cachedBisSchemaRepoPath, "Domains/Core/BisCore.ecschema.xml")
+	const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath ).toString();
+	await processSchemaForSuggestions(bisCoreSchemaText, suggestions);
+	return suggestions;
+}
+
+
 function main() {
 	if (!fse.existsSync(cachedBisSchemaRepoPath)) {
-		// TODO: make git path configurable or something
+		// TODO: use vscode configured git path
 		console.log("caching Bis-Schemas repo");
+		// Is it possible to sparse-checkout and avoid the cost of checking out the cmap stuff too?
+		// Maybe it's just better to use github's API to pull the necessary files and cache a revision number
 		child_process.execFileSync("git", ["clone", "https://github.com/iTwin/bis-schemas", cachedBisSchemaRepoPath]);
 		console.log("done caching Bis-Schemas repo");
 	} else {
 		console.log(`found existing cached Bis-Schemas repo at: ${cachedBisSchemaRepoPath}`);
-	}
-
-	async function buildSuggestions() {
-		const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
-
-		const xmlParser = new xml2js.Parser();
-		// in the future read all unversioned .ecschema.xml files in the repo
-		const bisCoreSchemaPath = path.join(cachedBisSchemaRepoPath, "Domains/Core/BisCore.ecschema.xml")
-		const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath).toString();
-		const bisCoreSchemaXml = await xmlParser.parseStringPromise(bisCoreSchemaText);
-		suggestions.schemas.BisCore = {};
-
-		const unresolvedClasses = new Map<string, any>(bisCoreSchemaXml.ECSchema.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
-		const resolvedClasses = new Map<string, any>();
-
-		function resolveClass(className: string) {
-			if (resolvedClasses.has(className)) return;
-			const classXml = unresolvedClasses.get(className);
-			const classSuggestions: SuggestionsCache["schemas"][string][string] = {};
-			for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
-				for (const prop of classXml?.[xmlPropType] ?? []) {
-					const propName = prop.$.propertyName;
-					classSuggestions[propName] = prop;
-					let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName);
-					if (thisPropNameContainingClasses === undefined) {
-						thisPropNameContainingClasses = new Set();
-						suggestions.propertyToContainingClasses.set(propName, thisPropNameContainingClasses);
-					}
-					thisPropNameContainingClasses.add({ schema: "BisCore", name: className, data: classXml });
-				}
-			}
-			for (const baseClassName of classXml?.BaseClass ?? []) {
-				if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
-				for (const baseClassPropName in suggestions.schemas.BisCore[baseClassName]) {
-					const baseClassProp = suggestions.schemas.BisCore[baseClassName][baseClassPropName];
-					classSuggestions[baseClassPropName] = baseClassProp;
-				}
-			}
-			suggestions.schemas.BisCore[className] = classSuggestions;
-			resolvedClasses.set(className, classSuggestions);
-			unresolvedClasses.delete(className);
-			return classXml;
-		}
-
-		for (const className of unresolvedClasses.keys()) {
-			resolveClass(className)
-		}
-
-		return suggestions;
 	}
 
 	const suggestionsPromise = buildSuggestions();
@@ -514,7 +524,7 @@ function main() {
 							insertText: propertyName,
 							kind: CompletionItemKind.Field,
 							data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
-							detail: property.$.extendedTypeName ?? "no extended type",
+							detail: property.$.displayLabel,
 							documentation: property.$.description,
 						});
 					}
