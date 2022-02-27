@@ -100,6 +100,8 @@ export function getQueryEditClauseType(query: SourceQuery, cursor: number): "FRO
 
 export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number): CompletionItem[] | undefined {
 	const editingClauseType = getQueryEditClauseType(query, cursor);
+	const isEditingSelectClause = editingClauseType === "SELECT";
+	const isEditingConditionClause = editingClauseType === "WHERE" || editingClauseType === "ON";
 	if (editingClauseType === undefined)
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
@@ -111,8 +113,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 			detail: `${schema}.${name}`,
 			documentation: data.$.description,
 		}));
-	}
-	else if (["ON", "WHERE", "SELECT"].includes(editingClauseType)) {
+	} else if (isEditingSelectClause || isEditingConditionClause) {
 		const guessedClasses = guessClasses(suggestions, query);
 		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name === className);
 		const guessedProperties: {propertyName: string; data: any}[] = [];
@@ -129,7 +130,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 				}
 			}
 		}
-		if (editingClauseType === "SELECT") {
+		if (isEditingSelectClause) {
 			// FIXME: this will match classes that have the same name across schemas
 			return guessedProperties.map(({propertyName, data}) => ({
 				label: propertyName,
@@ -139,7 +140,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 				detail: data.$.extendedTypeName ?? "no extended type",
 				documentation: data.$.description,
 			}));
-		} else if (editingClauseType === "ON" || editingClauseType === "WHERE") {
+		} else {
 			const aliases = getAliasNames(query);
 			return [
 				...guessedProperties.map(({propertyName, data}) => ({
