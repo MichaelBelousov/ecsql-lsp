@@ -13,5 +13,5 @@
     }
   },
   "include": ["src"],
-  "exclude": ["node_modules", ".vscode-test"]
+  "exclude": ["node_modules", ".vscode-test", "**/.bis-schemas-cache"]
 }

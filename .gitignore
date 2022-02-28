@@ -14,7 +14,7 @@ build
 out/
 
 # right now the tests generate this cache in-source so need to ignore..
-bis-schemas-cache
+.bis-schemas-cache
 
 # vscode
 .vscode-test

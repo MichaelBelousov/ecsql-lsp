@@ -234,7 +234,7 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
-const cachedBisSchemaRepoPath = path.join(__dirname, "bis-schemas-cache");
+const cachedBisSchemaRepoPath = path.join(__dirname, ".bis-schemas-cache");
 
 interface ECClass {
 	schema: string;
