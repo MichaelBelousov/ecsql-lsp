@@ -6,7 +6,7 @@
     "moduleResolution": "node",
     "sourceMap": true,
     "strict": true,
-    "outDir": "out",
+    "outDir": "lib",
     "rootDir": "src",
     "paths": {
       "tree-sitter-sql": ["../src/tree-sitter-sql.d.ts"]

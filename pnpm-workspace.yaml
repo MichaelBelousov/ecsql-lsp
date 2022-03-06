@@ -2,6 +2,7 @@
 packages:
   - client
   - server
+  - node-tree-sitter
   - tree-sitter-sql
   # exclude git repos in extension compilation output
   - '!server/out/**'
