@@ -60,6 +60,7 @@
   "scripts": {
     "build": "npm run build:typescript",
     "build:typescript": "tsc 1>&2 --outDir lib",
+    "watch": "tsc 1>&2 --outDir lib -w",
     "clean": "rimraf lib",
     "lint": "eslint --fix src/**/*.ts test/**/*.ts",
     "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" electron-mocha --timeout 100000 --require ts-node/register test/*.test.ts"

@@ -9,11 +9,32 @@ parser.setLanguage(TreeSitterSql);
 
 function sourceToQuery(source: string): SourceQuery {
   const ast = parser.parse(source);
-  return { ast, start: 0, end: source.length + 1, src: source }
+  return { ast, start: 0, end: source.length + 1, src: source, selectData: (s) => getCurrentSelectStatement(s, 0, ast) }
 }
 
+async function buildTestSuggestions() {
+  const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+
+  await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
+    <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
+      <ECEntityClass typeName="A" modifier="Sealed" displayLabel="class A" description="description of class A">
+        <ECProperty propertyName="G" typeName="string" description="Description of property G" />
+        <ECProperty propertyName="H" typeName="string" description="Description of property H" />
+      </ECEntityClass>
+      <ECEntityClass typeName="B" modifier="Sealed" displayLabel="class B" description="description of class B">
+        <ECProperty propertyName="I" typeName="string" description="Description of property I" />
+        <ECProperty propertyName="J" typeName="string" description="Description of property J" />
+      </ECEntityClass>
+    </ECSchema>`,
+    suggestions
+  );
+
+  return suggestions;
+}
+
+
 describe("tree-sitter-sql", () => {
-  it("parsed column names", () => {
+  it("parsed column names", async () => {
     const query = new TreeSitterParser.Query(TreeSitterSql, "(select_clause_body [(identifier) (alias)] @col)");
     const source = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT 1) AS col3 FROM some.table
@@ -28,20 +49,20 @@ describe("tree-sitter-sql", () => {
 });
 
 describe("getCurrentSelectStatement", () => {
-  it("understand inner query", () => {
+  it("understand inner query", async () => {
     const source = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
     `);
     const [firstSelectOffset, secondSelectOffset] = [...source.src.matchAll(/SELECT/g)].map(m => m.index!);
-    const outerSelectResult = getCurrentSelectStatement(firstSelectOffset, source);
+    const outerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), firstSelectOffset, source.ast);
     expect(outerSelectResult?.tables).to.deep.equal(["some.table", "joiner"]);
-    const innerSelectResult = getCurrentSelectStatement(secondSelectOffset, source);
+    const innerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), secondSelectOffset, source.ast);
     expect(innerSelectResult?.tables).to.deep.equal(["Y"]);
   });
 });
 
 describe("getQueriedProperties", () => {
-  it("simple test", () => {
+  it("simple test", async () => {
     const query = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
     `);
@@ -57,21 +78,7 @@ describe("suggestForQueryEdit", async () => {
       SELECT G FROM MySchema.A
     `);
 
-    const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
-
-    await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
-      <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
-        <ECEntityClass typeName="A" modifier="Sealed" displayLabel="class A" description="description of class A">
-          <ECProperty propertyName="G" typeName="string" description="Description of property G" />
-          <ECProperty propertyName="H" typeName="string" description="Description of property H" />
-        </ECEntityClass>
-        <ECEntityClass typeName="B" modifier="Sealed" displayLabel="class B" description="description of class B">
-          <ECProperty propertyName="I" typeName="string" description="Description of property I" />
-          <ECProperty propertyName="J" typeName="string" description="Description of property J" />
-        </ECEntityClass>
-      </ECSchema>`,
-      suggestions
-    );
+    const suggestions = await buildTestSuggestions();
 
     expect(
       suggestForQueryEdit(suggestions, query, query.src.indexOf("G"))
@@ -113,21 +120,7 @@ describe("suggestForQueryEdit", async () => {
       SELECT I FROM
     `);
 
-    const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
-
-    await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
-      <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
-        <ECEntityClass typeName="A" modifier="Sealed" displayLabel="class A" description="description of class A">
-          <ECProperty propertyName="G" typeName="string" description="Description of property G" />
-          <ECProperty propertyName="H" typeName="string" description="Description of property H" />
-        </ECEntityClass>
-        <ECEntityClass typeName="B" modifier="Sealed" displayLabel="class B" description="description of class B">
-          <ECProperty propertyName="I" typeName="string" description="Description of property I" />
-          <ECProperty propertyName="J" typeName="string" description="Description of property J" />
-        </ECEntityClass>
-      </ECSchema>`,
-      suggestions
-    );
+    const suggestions = await buildTestSuggestions();
 
     expect(
       suggestForQueryEdit(suggestions, query, query.src.length - 1)

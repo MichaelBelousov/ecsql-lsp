@@ -18,7 +18,7 @@ export interface SelectStatementMatch {
 	select: TreeSitter.SyntaxNode;
 	from: TreeSitter.SyntaxNode;
 	joins: TreeSitter.SyntaxNode[];
-	tables: string[];
+	tables: ECClass[];
 }
 
 // TODO: may want to suggest tables when there is an error after a FROM
@@ -27,28 +27,48 @@ export const selectStatementsQuery = new TreeSitter.Query(
 	"(select_statement (from_clause (identifier) @from-name)? @from (join_clause . (identifier) @join-name)* @joins) @select"
 );
 
-export function getCurrentSelectStatement(cursorOffsetInSql: number, queryInSource: SourceQuery): SelectStatementMatch | undefined {
-	const matches = selectStatementsQuery.matches(queryInSource.ast.rootNode);
-	const current = matches.reduce(
-		(prev, match) =>
-		match.captures[0/*select*/].node.startIndex <= cursorOffsetInSql
-		&& match.captures[0/*select*/].node.endIndex >= cursorOffsetInSql
-		? (!prev || (match.captures[0/*select*/].node.startIndex >= prev.captures[0/*select*/].node.startIndex
-								&& match.captures[0/*select*/].node.endIndex <= prev.captures[0/*select*/].node.endIndex)
-				? match
-				: prev)
-			: undefined,
-		undefined as TreeSitter.QueryMatch | undefined
-	);
-	return current && {
-		select: current.captures[0/*select*/].node,
-		from: current.captures[1/*from*/].node,
-		joins: current.captures.filter(c => c.name === 'joins').map(c => c.node),
-		tables: [
-			current.captures[2/*from-name*/].node.text!,
-			...current.captures.filter(c => c.name === 'join-name').map(c => c.node.text!),
-		]
-	};
+export function getCurrentSelectStatement(
+  suggestions: SuggestionsCache,
+  cursorOffsetInSql: number,
+  queryAst: TreeSitter.Tree
+): SelectStatementMatch | undefined {
+  const matches = selectStatementsQuery.matches(queryAst.rootNode);
+  const current = matches.reduce(
+    (prev, match) =>
+      match.captures[0 /*select*/].node.startIndex <= cursorOffsetInSql &&
+      match.captures[0 /*select*/].node.endIndex >= cursorOffsetInSql
+        ? !prev ||
+          (match.captures[0 /*select*/].node.startIndex >=
+            prev.captures[0 /*select*/].node.startIndex &&
+            match.captures[0 /*select*/].node.endIndex <=
+              prev.captures[0 /*select*/].node.endIndex)
+          ? match
+          : prev
+        : undefined,
+    undefined as TreeSitter.QueryMatch | undefined
+  );
+  return (
+    current && {
+      select: current.captures[0 /*select*/].node,
+      from: current.captures[1 /*from*/].node,
+      joins: current.captures
+        .filter((c) => c.name === "joins")
+        .map((c) => c.node),
+      tables: [
+        current.captures[2 /*from-name*/].node.text!,
+        ...current.captures
+          .filter((c) => c.name === "join-name")
+          .map((c) => c.node.text!),
+      ].map(fullName => {
+				const [schema, name] = fullName.split(".");
+				return {
+					schema,
+					name,
+					data: suggestions.schemas[schema][name],
+				};
+			}),
+    }
+  );
 }
 
 export const queriedPropsQuery = new TreeSitter.Query(
@@ -71,7 +91,10 @@ export const queriedNamesQuery = new TreeSitter.Query(
 	'(select_clause_body [(identifier) (alias (identifier) .)] @col)'
 );
 
-/** get the alias names in a query */
+/**
+ * get the alias names in a query
+ * @note this currently gets all names, not just those of aliases! It is a misnomer and I should rename it
+ */
 export function getAliasNames(query: SourceQuery): string[] {
 	const matches = queriedNamesQuery.matches(query.ast.rootNode);
 	return matches.map((match) =>
@@ -82,11 +105,13 @@ export function getAliasNames(query: SourceQuery): string[] {
 }
 
 /** given a (partial) query, guess the classes it wants to query */
-export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery): ECClass[] {
+export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery, prefix?: string): ECClass[] {
+	prefix = prefix?.toLowerCase();
 	const queriedProps = getQueriedProperties(query);
 	const classes = new Set<ECClass>();
 	for (const queriedProp of queriedProps) {
 		for (const ecclass of suggestions.propertyToContainingClasses.get(queriedProp) ?? []) {
+			if (prefix && !ecclass.name.startsWith(prefix)) continue;
 			classes.add(ecclass);
 		}
 	}
@@ -101,14 +126,15 @@ export function getQueryEditClauseType(query: SourceQuery, cursor: number): SqlK
 	return prevKeyword?.[0] as undefined | SqlKeywordString;
 }
 
-export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number): CompletionItem[] | undefined {
+export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number, prefix?: string): CompletionItem[] | undefined {
+	prefix = prefix?.toLowerCase();
 	const editingClauseType = getQueryEditClauseType(query, cursor);
 	const isEditingSelectClause = editingClauseType === "SELECT";
 	const isEditingConditionClause = editingClauseType === "WHERE" || editingClauseType === "ON";
 	if (editingClauseType === undefined)
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-		return guessClasses(suggestions, query).map(({name, schema, data}) => ({
+		return guessClasses(suggestions, query, prefix).map(({name, schema, data}) => ({
 			label: `${schema}.${name}`,
 			insertText: `${schema}.${name}`,
 			kind: CompletionItemKind.Class,
@@ -119,16 +145,17 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	} else if (isEditingSelectClause || isEditingConditionClause) {
 		// TODO: do not suggest properties that they already have listed
 		// TODO: suggest '*'
-		const guessedClasses = guessClasses(suggestions, query);
+		const guessedClasses: ECClass[] = query.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
 		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name === className);
-		const guessedProperties: {propertyName: string; data: any}[] = [];
+		const guessedProperties = new Map<string, {propertyName: string; data: any}>();
 		for (const schemaName in suggestions.schemas) {
 			for (const className in suggestions.schemas[schemaName]) {
 				if (!includeClass(className)) continue;
 				const classSuggestions = suggestions.schemas[schemaName][className];
 				for (const propertyName in classSuggestions) {
 					const property = classSuggestions[propertyName];
-					guessedProperties.push({
+					// TODO: need to compare the existing one and override it by priority (e.g. least derived class)
+					guessedProperties.set(propertyName.toLowerCase(), {
 						propertyName,
 						data: property,
 					});
@@ -136,8 +163,9 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 			}
 		}
 		if (isEditingSelectClause) {
+			// TODO: use lazy-from
 			// FIXME: this will match classes that have the same name across schemas
-			return guessedProperties.map(({propertyName, data}) => ({
+			return [...guessedProperties.values()].map(({propertyName, data}) => ({
 				label: propertyName,
 				insertText: propertyName,
 				kind: CompletionItemKind.Field,
@@ -148,7 +176,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 		} else {
 			const aliases = getAliasNames(query);
 			return [
-				...guessedProperties.map(({propertyName, data}) => ({
+				...[...guessedProperties.values()].map(({propertyName, data}) => ({
 						label: propertyName,
 						insertText: propertyName,
 						kind: CompletionItemKind.Field,
@@ -164,7 +192,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 						//detail: data.$.extendedTypeName ?? "no extended type",
 						//documentation: data.$.description,
 				})),
-			];
+			].filter(completion => !prefix || completion.insertText.startsWith(prefix));
 		}
 	}
 }
@@ -174,12 +202,14 @@ export interface SourceQuery {
 	end: number;
 	ast: TreeSitter.Tree;
 	src: string;
+	selectData(s: SuggestionsCache): SelectStatementMatch | undefined;
 }
 
 export function findAllQueries(doc: TextDocument): SourceQuery[] {
 	const text = doc.getText();
 	const results: SourceQuery[] = [];
 	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
+		const matchStart = match.index!;
 		const matchEnd = match.index! + match[0].length;
 		const literal = getNextStringLiteral(text, matchEnd);
 		if (literal) {
@@ -197,6 +227,9 @@ export function findAllQueries(doc: TextDocument): SourceQuery[] {
 				end: matchEnd + literal.length,
 				src: source,
 				ast,
+				selectData(suggestions: SuggestionsCache) {
+					return getCurrentSelectStatement(suggestions, matchStart, ast);
+				},
 			});
 		}
 	}
@@ -355,6 +388,7 @@ function main() {
 				// Tell the client that this server supports code completion.
 				completionProvider: {
 					resolveProvider: true,
+					triggerCharacters: ['.'] // for suggesting on stuff like `bis.`
 				}
 			}
 		};
@@ -495,42 +529,22 @@ function main() {
 		async (docPos: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 			const fullDoc = documents.get(docPos.textDocument.uri)!;
 
-			const queries = await findAllQueries(fullDoc);
+			const suggestions = await suggestionsPromise;
+			const queries = findAllQueries(fullDoc);
 			if (queries.length === 0) return [];
 
 			const offset = fullDoc.offsetAt(docPos.position);
 			const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
 			if (queryWeAreIn === undefined) return [];
 
-			const currSelect = getCurrentSelectStatement(offset - queryWeAreIn.start, queryWeAreIn);
+			const offsetInQuery = offset - queryWeAreIn.start;
 
 			const docText = fullDoc.getText();
 			const textBehindPos = docText.slice(0, offset);
 			const currentWordMatch = /\w+$/.exec(textBehindPos);
-			const currentWord = currentWordMatch?.[0] ?? "";
-			const suggestions = await suggestionsPromise;
+			const currentWord = currentWordMatch?.[0]?.toLowerCase() ?? "";
 
-			const result: CompletionItem[] = [];
-
-			for (const schemaName in suggestions.schemas) {
-				const schema = suggestions.schemas[schemaName];
-				for (const className in schema) {
-					const class_ = schema[className];
-					for (const propertyName in class_) {
-						if (!propertyName.startsWith(currentWord)) continue;
-						const property = class_[propertyName];
-						result.push({
-							label: propertyName,
-							insertText: propertyName,
-							kind: CompletionItemKind.Field,
-							data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
-							detail: property.$.displayLabel,
-							documentation: property.$.description,
-						});
-					}
-				}
-			}
-			return result;
+			return suggestForQueryEdit(suggestions, queryWeAreIn, offsetInQuery, currentWord) ?? [];
 		}
 	);
 
