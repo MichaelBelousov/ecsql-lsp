@@ -502,7 +502,7 @@ function main() {
 			const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
 			if (queryWeAreIn === undefined) return [];
 
-			const currSelect = getCurrentSelectStatement(offset, queryWeAreIn);
+			const currSelect = getCurrentSelectStatement(offset - queryWeAreIn.start, queryWeAreIn);
 
 			const docText = fullDoc.getText();
 			const textBehindPos = docText.slice(0, offset);
