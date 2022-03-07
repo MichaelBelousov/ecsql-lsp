@@ -5,7 +5,6 @@
 
 import * as fse from "fs-extra";
 import * as path from "path";
-import * as child_process from "child_process";
 
 import * as xml2js from "xml2js";
 import * as TreeSitter from "tree-sitter";
@@ -61,11 +60,11 @@ export function getCurrentSelectStatement(
           .map((c) => c.node.text!),
       ].map(fullName => {
 				const [schema, name] = fullName.split(".");
-				return {
+				return new ECClass({
 					schema,
 					name,
 					data: suggestions.schemas[schema][name],
-				};
+				});
 			}),
     }
   );
@@ -106,12 +105,14 @@ export function getAliasNames(query: SourceQuery): string[] {
 
 /** given a (partial) query, guess the classes it wants to query */
 export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery, prefix?: string): ECClass[] {
-	prefix = prefix?.toLowerCase();
 	const queriedProps = getQueriedProperties(query);
 	const classes = new Set<ECClass>();
 	for (const queriedProp of queriedProps) {
-		for (const ecclass of suggestions.propertyToContainingClasses.get(queriedProp) ?? []) {
-			if (prefix && !ecclass.name.startsWith(prefix)) continue;
+		for (const ecclass of suggestions.propertyToContainingClasses.get(queriedProp.toLowerCase()) ?? []) {
+			if (prefix &&
+				!( `${ecclass.schema}.${ecclass.name}`.startsWith(prefix)
+				|| `${ecclass.alias(suggestions)}.${ecclass.name}`.startsWith(prefix)))
+				continue;
 			classes.add(ecclass);
 		}
 	}
@@ -127,21 +128,26 @@ export function getQueryEditClauseType(query: SourceQuery, cursor: number): SqlK
 }
 
 export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number, prefix?: string): CompletionItem[] | undefined {
-	prefix = prefix?.toLowerCase();
 	const editingClauseType = getQueryEditClauseType(query, cursor);
 	const isEditingSelectClause = editingClauseType === "SELECT";
 	const isEditingConditionClause = editingClauseType === "WHERE" || editingClauseType === "ON";
 	if (editingClauseType === undefined)
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-		return guessClasses(suggestions, query, prefix).map(({name, schema, data}) => ({
-			label: `${schema}.${name}`,
-			insertText: `${schema}.${name}`,
-			kind: CompletionItemKind.Class,
-			//data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
-			detail: data.$.displayLabel,
-			documentation: data.$.description,
-		}));
+		return guessClasses(suggestions, query, prefix).map((ecclass) => {
+			const usingAlias = !prefix?.startsWith(ecclass.schema);
+			const schemaIdent = usingAlias ? ecclass.alias(suggestions) : ecclass.schema;
+			const fullClassRef = `${schemaIdent}.${ecclass.name}`;
+			const insertText = fullClassRef.slice(prefix?.length ?? 0);
+			return {
+				label: fullClassRef,
+				insertText,
+				kind: CompletionItemKind.Class,
+				//data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
+				detail: ecclass.data.$.displayLabel,
+				documentation: ecclass.data.$.description,
+			};
+		});
 	} else if (isEditingSelectClause || isEditingConditionClause) {
 		// TODO: do not suggest properties that they already have listed
 		// TODO: suggest '*'
@@ -205,8 +211,7 @@ export interface SourceQuery {
 	selectData(s: SuggestionsCache): SelectStatementMatch | undefined;
 }
 
-export function findAllQueries(doc: TextDocument): SourceQuery[] {
-	const text = doc.getText();
+export function findAllQueries(text: string): SourceQuery[] {
 	const results: SourceQuery[] = [];
 	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
 		const matchStart = match.index!;
@@ -245,7 +250,7 @@ function getNextStringLiteral(text: string, offset: number): string | undefined 
 		//if ()
 		//last = chr;
 	//}
-	return /".*(?<!\\)"/.exec(text.slice(offset))?.[0] ?? undefined;
+	return /".*?(?<!\\)"/s.exec(text.slice(offset))?.[0] ?? undefined;
 }
 
 import {
@@ -267,17 +272,30 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
-const cachedBisSchemaRepoPath = path.join(__dirname, ".bis-schemas-cache");
+//const cachedBisSchemaRepoPath = path.join(__dirname, ".bis-schemas-cache");
 
-interface ECClass {
+
+interface ECClassProps {
 	schema: string;
 	name: string;
 	/** raw xml data */
 	data: any;
 }
 
+class ECClass implements ECClassProps {
+	schema!: string;
+	name!: string;
+	data!: any;
+	public constructor(props: ECClassProps) {
+		Object.assign(this, props);
+	}
+	alias(s: SuggestionsCache): string { return s.schemaAliases.get(this.schema)!; }
+}
+
 export interface SuggestionsCache {
 	propertyToContainingClasses: Map<string, Set<ECClass>>,
+	schemaAliases: Map<string, string>;
+
 	schemas: {
 		[schemaName: string]: {
 			[className: string]: {
@@ -290,8 +308,12 @@ export interface SuggestionsCache {
 export async function processSchemaForSuggestions(schemaText: string, suggestions: SuggestionsCache): Promise<void> {
 	const xmlParser = new xml2js.Parser();
 	const schemaXml = await xmlParser.parseStringPromise(schemaText);
-	const schemaName = schemaXml.ECSchema.$.schemaName;
-	suggestions.schemas[schemaName] = {};
+	const schemaName: string = schemaXml.ECSchema.$.schemaName;
+	const schemaAlias: string = schemaXml.ECSchema.$.alias;
+	suggestions.schemaAliases.set(schemaName, schemaAlias);
+	const schemaSuggestions: SuggestionsCache["schemas"][string] = {};
+	suggestions.schemas[schemaName.toLowerCase()] = schemaSuggestions;
+	suggestions.schemas[schemaAlias.toLowerCase()] = schemaSuggestions;
 
 	const unresolvedClasses = new Map<string, any>(schemaXml.ECSchema.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
 	const resolvedClasses = new Map<string, any>();
@@ -302,24 +324,24 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
 		const classSuggestions: SuggestionsCache["schemas"][string][string] = {};
 		for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
 			for (const prop of classXml?.[xmlPropType] ?? []) {
-				const propName = prop.$.propertyName;
-				classSuggestions[propName] = prop;
-				let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName);
+				const propName: string = prop.$.propertyName;
+				classSuggestions[propName.toLowerCase()] = prop;
+				let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName.toLowerCase());
 				if (thisPropNameContainingClasses === undefined) {
 					thisPropNameContainingClasses = new Set();
-					suggestions.propertyToContainingClasses.set(propName, thisPropNameContainingClasses);
+					suggestions.propertyToContainingClasses.set(propName.toLowerCase(), thisPropNameContainingClasses);
 				}
-				thisPropNameContainingClasses.add({ schema: schemaName, name: className, data: classXml });
+				thisPropNameContainingClasses.add(new ECClass({ schema: schemaName, name: className, data: classXml }));
 			}
 		}
 		for (const baseClassName of classXml?.BaseClass ?? []) {
-			if (!resolvedClasses.has(baseClassName)) resolveClass(baseClassName);
-			for (const baseClassPropName in suggestions.schemas[schemaName][baseClassName]) {
-				const baseClassProp = suggestions.schemas[schemaName][baseClassName][baseClassPropName];
-				classSuggestions[baseClassPropName] = baseClassProp;
+			if (!resolvedClasses.has(baseClassName.toLowerCase())) resolveClass(baseClassName);
+			for (const baseClassPropName in suggestions.schemas[schemaName.toLowerCase()][baseClassName.toLowerCase()]) {
+				const baseClassProp = suggestions.schemas[schemaName.toLowerCase()][baseClassName.toLowerCase()][baseClassPropName.toLowerCase()];
+				classSuggestions[baseClassPropName.toLowerCase()] = baseClassProp;
 			}
 		}
-		suggestions.schemas[schemaName][className] = classSuggestions;
+		suggestions.schemas[schemaName.toLowerCase()][className.toLowerCase()] = classSuggestions;
 		resolvedClasses.set(className, classSuggestions);
 		unresolvedClasses.delete(className);
 		return classXml;
@@ -330,17 +352,38 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
 	}
 }
 
-async function buildSuggestions() {
-	const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+export async function buildSuggestions() {
+	const suggestions: SuggestionsCache = {
+		schemas: {},
+		propertyToContainingClasses: new Map(),
+		schemaAliases: new Map(),
+	};
 	// in the future read all unversioned .ecschema.xml files in the repo
-	const bisCoreSchemaPath = path.join(cachedBisSchemaRepoPath, "Domains/Core/BisCore.ecschema.xml")
-	const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath ).toString();
+	const bisCoreSchemaPath = path.join(__dirname, "assets/BisCore.ecschema.xml")
+	const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath).toString();
 	await processSchemaForSuggestions(bisCoreSchemaText, suggestions);
 	return suggestions;
 }
 
+export function suggestQueryEditInDocument(suggestions: SuggestionsCache, text: string, offset: number) {
+	const queries = findAllQueries(text);
+	if (queries.length === 0) return [];
+
+	const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
+	if (queryWeAreIn === undefined) return [];
+
+	const offsetInQuery = offset - queryWeAreIn.start;
+
+	const textBehindPos = text.slice(0, offset);
+	const currentWordMatch = /[\w.]+$/.exec(textBehindPos);
+	const currentWord = currentWordMatch?.[0] ?? "";
+
+	return suggestForQueryEdit(suggestions, queryWeAreIn, offsetInQuery, currentWord) ?? [];
+}
 
 function main() {
+	/*
+	// TODO: manage BisSchemas updates
 	if (!fse.existsSync(cachedBisSchemaRepoPath)) {
 		// TODO: use vscode configured git path
 		console.log("caching Bis-Schemas repo");
@@ -351,6 +394,7 @@ function main() {
 	} else {
 		console.log(`found existing cached Bis-Schemas repo at: ${cachedBisSchemaRepoPath}`);
 	}
+	*/
 
 	const suggestionsPromise = buildSuggestions();
 
@@ -528,26 +572,14 @@ function main() {
 	connection.onCompletion(
 		async (docPos: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 			const fullDoc = documents.get(docPos.textDocument.uri)!;
-
-			const suggestions = await suggestionsPromise;
-			const queries = findAllQueries(fullDoc);
-			if (queries.length === 0) return [];
-
 			const offset = fullDoc.offsetAt(docPos.position);
-			const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
-			if (queryWeAreIn === undefined) return [];
-
-			const offsetInQuery = offset - queryWeAreIn.start;
-
-			const docText = fullDoc.getText();
-			const textBehindPos = docText.slice(0, offset);
-			const currentWordMatch = /\w+$/.exec(textBehindPos);
-			const currentWord = currentWordMatch?.[0]?.toLowerCase() ?? "";
-
-			return suggestForQueryEdit(suggestions, queryWeAreIn, offsetInQuery, currentWord) ?? [];
+			const text = fullDoc.getText();
+			const suggestions = await suggestionsPromise;
+			return suggestQueryEditInDocument(suggestions, text, offset);
 		}
 	);
 
+	// TODO: use this sample for performance maybe... not sure it's more performant in our case
 	// This handler resolves additional information for the item selected in
 	// the completion list.
 	/*

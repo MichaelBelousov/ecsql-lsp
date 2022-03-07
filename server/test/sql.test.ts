@@ -1,7 +1,7 @@
 import * as TreeSitterParser from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
-import { assert, expect } from "chai";
-import { getCurrentSelectStatement, getQueriedProperties, processSchemaForSuggestions, SourceQuery, suggestForQueryEdit, SuggestionsCache } from "../src/server";
+import { expect } from "chai";
+import { buildSuggestions, getCurrentSelectStatement, getQueriedProperties, processSchemaForSuggestions, SourceQuery, suggestForQueryEdit, SuggestionsCache, suggestQueryEditInDocument } from "../src/server";
 import { CompletionItemKind } from 'vscode-languageserver';
 
 const parser = new TreeSitterParser();
@@ -12,8 +12,22 @@ function sourceToQuery(source: string): SourceQuery {
   return { ast, start: 0, end: source.length + 1, src: source, selectData: (s) => getCurrentSelectStatement(s, 0, ast) }
 }
 
+/** takes a document with a >|< string meaning the cursor position is over the next character (is the next character),
+ * and gives you a chai Assertion to assert on. 
+ * TODO: use the chai extension API instead */
+async function expectFromQueryEditInDoc(doc: string, suggestions?: SuggestionsCache): Promise<Chai.Assertion> {
+  const offset = doc.indexOf(">|<");
+  doc = doc.replace(">|<", "");
+  return expect(suggestQueryEditInDocument(suggestions ?? await buildTestSuggestions(), doc, offset));
+}
+
+
 async function buildTestSuggestions() {
-  const suggestions: SuggestionsCache = { schemas: {}, propertyToContainingClasses: new Map() };
+  const suggestions: SuggestionsCache = {
+    schemas: {},
+    propertyToContainingClasses: new Map(),
+    schemaAliases: new Map(),
+  };
 
   await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>
     <ECSchema schemaName="MySchema" alias="ms" version="01.00.00" xmlns="http://www.bentley.com/schemas/Bentley.ECXML.3.1">
@@ -133,5 +147,45 @@ describe("suggestForQueryEdit", async () => {
         detail: "class B"
       }]
     )
+  });
+
+  it("biscore suggestions", async () => {
+    const suggestions = await buildSuggestions();
+
+    (await expectFromQueryEditInDoc(
+      `iModelDb.query("SELECT Model FROM bis.>|<");`,
+      suggestions
+    )).to.deep.equal([
+      {
+        label: "bis.Element",
+        kind: CompletionItemKind.Class,
+        insertText: "Element",
+        documentation: "A bis:Element is the smallest individually identifiable building block for modeling the real world. "
+          + "Each bis:Element represents an Entity in the real world. Sets of bis:Elements (contained in bis:Models) "
+          + "are used to sub-model other bis:Elements that represent larger scale real world Entities. Using this recursive modeling strategy, "
+          + "bis:Elements can represent Entities at any scale. Elements can represent physical things, abstract concepts or simply be information records.",
+        detail: undefined
+      }
+    ]);
+
+    (await expectFromQueryEditInDoc(
+      `
+      const result = iModelDb.query(
+        "SELECT Model FROM BisCore.E>|< JOIN BisCore.Model m ON m.ECInstanceId=Model.Id"
+      )
+      `,
+      suggestions
+    )).to.deep.equal([
+      {
+        label: "BisCore.Element",
+        kind: CompletionItemKind.Class,
+        insertText: "lement",
+        documentation: "A bis:Element is the smallest individually identifiable building block for modeling the real world. "
+          + "Each bis:Element represents an Entity in the real world. Sets of bis:Elements (contained in bis:Models) "
+          + "are used to sub-model other bis:Elements that represent larger scale real world Entities. Using this recursive modeling strategy, "
+          + "bis:Elements can represent Entities at any scale. Elements can represent physical things, abstract concepts or simply be information records.",
+        detail: undefined
+      }
+    ]);
   });
 });
