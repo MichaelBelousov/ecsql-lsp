@@ -206,22 +206,80 @@ describe("suggestForQueryEdit", async () => {
     ]);
   });
 
-  it.skip("biscore condition suggestions", async () => {
+  it("biscore condition suggestions", async () => {
     const suggestions = await buildSuggestions();
 
     (await expectFromQueryEditInDoc(
-      `iModelDb.query("SELECT Model FROM bis.>|<");`,
+      `iModelDb.query("SELECT Model FROM bis.Element WHERE ECInstanceId=>|<");`,
       suggestions
     )).to.deep.equal([
       {
-        label: "bis.Element",
-        kind: CompletionItemKind.Class,
-        insertText: "Element",
-        documentation: "A bis:Element is the smallest individually identifiable building block for modeling the real world. "
-          + "Each bis:Element represents an Entity in the real world. Sets of bis:Elements (contained in bis:Models) "
-          + "are used to sub-model other bis:Elements that represent larger scale real world Entities. Using this recursive modeling strategy, "
-          + "bis:Elements can represent Entities at any scale. Elements can represent physical things, abstract concepts or simply be information records.",
-        detail: undefined
+        detail: "Last Modified",
+        documentation: "The last modified time of the bis:Element. This is maintained by the core framework and should not be set directly by applications.",
+        insertText: "LastMod",
+        kind: CompletionItemKind.Field,
+        label: "LastMod",
+      },
+      {
+        detail: "Code",
+        documentation: "The CodeValue property stores the formal name (business key) for a bis:Element. The combination of CodeSpec, CodeScope, and CodeValue properties must be unique for each bis:Element instance.",
+        insertText: "CodeValue",
+        kind: CompletionItemKind.Field,
+        label: "CodeValue",
+      },
+      {
+        detail: "User Label",
+        documentation: "An optional friendly name given by the user (as opposed to the formal name stored in the CodeValue property).",
+        insertText: "UserLabel",
+        kind: CompletionItemKind.Field,
+        label: "UserLabel",
+      },
+      {
+        detail: "Federation GUID",
+        documentation: "The GUID used to federate this bis:Element across repositories.",
+        insertText: "FederationGuid",
+        kind: CompletionItemKind.Field,
+        label: "FederationGuid",
+      },
+      {
+        detail: "JSON Properties",
+        documentation: "A string property that users and/or applications can use to persist ad hoc JSON values.",
+        insertText: "JsonProperties",
+        kind: CompletionItemKind.Field,
+        label: "JsonProperties",
+      },
+      {
+        detail: undefined,
+        documentation: "The bis:Model that contains this bis:Element.",
+        insertText: "Model",
+        kind: CompletionItemKind.Field,
+        label: "Model",
+      },
+      {
+        detail: "Code Specification",
+        documentation: "The CodeSpec property identifies the bis:CodeSpec used to generate and validate the code for this bis:Element. The combination of CodeSpec, CodeScope, and CodeValue properties must be unique for each bis:Element instance.",
+        insertText: "CodeSpec",
+        kind: CompletionItemKind.Field,
+        label: "CodeSpec",
+      },
+      {
+        detail: "Code Scope",
+        documentation: "The CodeScope property identifies the bis:Element that provides the uniqueness scope for the code value. The combination of CodeSpec, CodeScope, and CodeValue properties must be unique for each bis:Element instance.",
+        insertText: "CodeScope",
+        kind: CompletionItemKind.Field,
+        label: "CodeScope",
+      },
+      {
+        detail: undefined,
+        documentation: "The parent bis:Element that owns this bis:Element.",
+        insertText: "Parent",
+        kind: CompletionItemKind.Field,
+        label: "Parent",
+      },
+      {
+        insertText: "Model",
+        kind: CompletionItemKind.Field,
+        label: "Model",
       }
     ]);
   });
