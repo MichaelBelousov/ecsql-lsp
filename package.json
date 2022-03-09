@@ -31,7 +31,7 @@
     "onLanguage:typescript"
   ],
   "main": "./client/out/extension",
-  "icon": "./icon.png",
+  "icon": "icon.png",
   "contributes": {
     "configuration": {
       "type": "object",
@@ -52,6 +52,7 @@
     }
   },
   "scripts": {
+    "package": "vsce package",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
     "watch": "tsc -b -w",

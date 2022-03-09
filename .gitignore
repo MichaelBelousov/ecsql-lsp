@@ -18,3 +18,5 @@ out/
 
 # vscode
 .vscode-test
+.vsix
+
