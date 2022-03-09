@@ -491,7 +491,7 @@ function main() {
 		}
 
 		// Revalidate all open text documents
-		documents.all().forEach(validateTextDocument);
+		//documents.all().forEach(validateTextDocument);
 	});
 
 	function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
@@ -516,9 +516,9 @@ function main() {
 
 	// The content of a text document has changed. This event is emitted
 	// when the text document first opened or when its content has changed.
-	documents.onDidChangeContent(change => {
+	/*documents.onDidChangeContent(change => {
 		validateTextDocument(change.document);
-	});
+	});*/
 
 	async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 		// In this simple example we get the settings for every validate run.
