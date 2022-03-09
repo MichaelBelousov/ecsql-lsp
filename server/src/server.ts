@@ -58,14 +58,17 @@ export function getCurrentSelectStatement(
         ...current.captures
           .filter((c) => c.name === "join-name")
           .map((c) => c.node.text!),
-      ].map(fullName => {
+      ]
+			.map(fullName => {
 				const [schema, name] = fullName.split(".");
-				return new ECClass({
-					schema,
-					name,
-					data: suggestions.schemas[schema][name],
-				});
-			}),
+				return { schema, name };
+			})
+			.filter(({schema, name}) => name !== undefined && schema in suggestions.schemas && name in suggestions.schemas[schema])
+			.map(({schema, name}) => new ECClass({
+				schema,
+				name,
+				data: suggestions.schemas[schema][name],
+			})),
     }
   );
 }
@@ -134,14 +137,16 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	if (editingClauseType === undefined)
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-		return guessClasses(suggestions, query, prefix).map((ecclass) => {
+		const tables = query.selectData(suggestions)?.tables;
+		return guessClasses(suggestions, query, prefix)
+		.filter((cls) => !tables || !tables.some(t => t.name === cls.name && t.schema === cls.schema))
+		.map((ecclass) => {
 			const usingAlias = !prefix?.startsWith(ecclass.schema);
 			const schemaIdent = usingAlias ? ecclass.alias(suggestions) : ecclass.schema;
 			const fullClassRef = `${schemaIdent}.${ecclass.name}`;
-			const insertText = fullClassRef.slice(prefix?.length ?? 0);
 			return {
 				label: fullClassRef,
-				insertText,
+				insertText: fullClassRef,
 				kind: CompletionItemKind.Class,
 				//data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
 				detail: ecclass.data.$.displayLabel,
@@ -374,7 +379,7 @@ export function suggestQueryEditInDocument(suggestions: SuggestionsCache, text: 
 	const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
 	if (queryWeAreIn === undefined) return [];
 
-	const offsetInQuery = offset - queryWeAreIn.start;
+	const offsetInQuery = offset - queryWeAreIn.start - 1; // TODO: double check this...
 
 	const textBehindPos = text.slice(0, offset);
 	const currentWordMatch = /[\w.]+$/.exec(textBehindPos);

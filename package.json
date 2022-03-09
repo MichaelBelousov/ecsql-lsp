@@ -21,8 +21,9 @@
   ],
   "keywords": [
     "ecsql",
-    "vscode",
-    "itwinjs"
+    "sql",
+    "itwinjs",
+    "itwin"
   ],
   "engines": {
     "vscode": "^1.43.0"
