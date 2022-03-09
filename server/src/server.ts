@@ -152,7 +152,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 		// TODO: do not suggest properties that they already have listed
 		// TODO: suggest '*'
 		const guessedClasses: ECClass[] = query.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
-		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name === className);
+		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name.toLowerCase() === className);
 		const guessedProperties = new Map<string, {propertyName: string; data: any}>();
 		for (const schemaName in suggestions.schemas) {
 			for (const className in suggestions.schemas[schemaName]) {
@@ -160,9 +160,11 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 				const classSuggestions = suggestions.schemas[schemaName][className];
 				for (const propertyName in classSuggestions) {
 					const property = classSuggestions[propertyName];
-					// TODO: need to compare the existing one and override it by priority (e.g. least derived class)
-					guessedProperties.set(propertyName.toLowerCase(), {
-						propertyName,
+					const propertyKey = propertyName.toLowerCase();
+					if (prefix && !propertyKey.startsWith(prefix.toLowerCase())) continue;
+					// TODO: need to provide priority to collisions (e.g. least derived class)
+					guessedProperties.set(propertyKey, {
+						propertyName: property.$.propertyName, // HACK: need a better way to get the correctly capitalized name
 						data: property,
 					});
 				}
@@ -179,7 +181,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 				detail: data.$.displayLabel,
 				documentation: data.$.description,
 			}));
-		} else {
+		} else if (isEditingConditionClause) {
 			const aliases = getAliasNames(query);
 			return [
 				...[...guessedProperties.values()].map(({propertyName, data}) => ({

@@ -56,7 +56,7 @@
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
-    "test": "sh ./scripts/e2e.sh"
+    "test": "echo these tests are not yet supported && exit 1 && sh ./scripts/e2e.sh"
   },
   "devDependencies": {
     "@types/chai": "^4.3.0",
