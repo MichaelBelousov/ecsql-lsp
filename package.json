@@ -31,7 +31,7 @@
   "activationEvents": [
     "onLanguage:typescript"
   ],
-  "main": "./client/out/extension",
+  "main": "./client/dist/main.js",
   "icon": "icon.png",
   "contributes": {
     "configuration": {
@@ -53,7 +53,9 @@
     }
   },
   "scripts": {
-    "bundle": "webpack --config webpack.config.js",
+    "bundle": "npm run bundle:client && npm run bundle:server",
+    "bundle:server": "cd server && npm run bundle",
+    "bundle:client": "cd client && npm run bundle",
     "package": "vsce package --yarn",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",

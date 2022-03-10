@@ -2,6 +2,8 @@
 **
 #
 # white list
+!client/dist
+!server/dist
 !dist/
 !icon.png
 !LICENSE.md

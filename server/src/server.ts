@@ -4,11 +4,13 @@
  * ------------------------------------------------------------------------------------------ */
 
 import * as fse from "fs-extra";
-import * as path from "path";
 
 import * as xml2js from "xml2js";
 import * as TreeSitter from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
+
+// in the future read all unversioned .ecschema.xml files in the repo
+import bisCoreSchemaPath from "./assets/BisCore.ecschema.xml";
 
 const parser = new TreeSitter();
 parser.setLanguage(TreeSitterSql);
@@ -366,8 +368,6 @@ export async function buildSuggestions() {
 		propertyToContainingClasses: new Map(),
 		schemaAliases: new Map(),
 	};
-	// in the future read all unversioned .ecschema.xml files in the repo
-	const bisCoreSchemaPath = path.join(__dirname, "assets/BisCore.ecschema.xml")
 	const bisCoreSchemaText = fse.readFileSync(bisCoreSchemaPath).toString();
 	await processSchemaForSuggestions(bisCoreSchemaText, suggestions);
 	return suggestions;
