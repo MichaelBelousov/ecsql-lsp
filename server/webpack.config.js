@@ -23,7 +23,8 @@ module.exports = {
       },
       {
         test: /\.xml$/,
-        use: "file-loader",
+        // TODO: move to webpack 5 asset modules
+        use: "raw-loader",
       },
     ],
   },
