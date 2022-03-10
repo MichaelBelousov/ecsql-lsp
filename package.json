@@ -53,12 +53,23 @@
     }
   },
   "scripts": {
-    "package": "vsce package",
+    "package": "vsce package --yarn",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
     "test": "echo these tests are not yet supported && exit 1 && sh ./scripts/e2e.sh"
+  },
+  "//": [
+    "note that dependencies of the client and server must be hoisted here for vsce to find them"
+  ],
+  "dependencies": {
+    "tree-sitter": "workspace:*",
+    "tree-sitter-sql": "workspace:*",
+    "vscode-languageclient": "^7.0.0",
+    "vscode-languageserver": "^7.0.0",
+    "vscode-languageserver-textdocument": "^1.0.1",
+    "xml2js": "^0.4.23"
   },
   "devDependencies": {
     "@types/chai": "^4.3.0",

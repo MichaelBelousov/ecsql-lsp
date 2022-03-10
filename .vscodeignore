@@ -1,6 +1,5 @@
-# TODO: do whitelisting instead
+# TODO: definitely do whitelisting instead
 
-node-tree-sitter/node_modules
 node-tree-sitter/vendor
 node-tree-sitter/build
 node-tree-sitter/src
@@ -13,16 +12,36 @@ tree-sitter-sql/grammar.js
 tree-sitter-sql/queries
 tree-sitter-sql/scripts
 tree-sitter-sql/test
-tree-sitter-sql/node_modules
 tree-sitter-sql/docs
 tree-sitter-sql/examples
 tree-sitter-sql/src/tree_sitter
 
-*.c
-*.rs
-*.h
-compile_commands.json
-tsconfig.json
+**/*.cc
+**/*.c
+**/*.rs
+**/*.h
+**/compile_commands.json
+**/tsconfig.json
+**/package-lock.json
+**/.editorconfig
+**/pnpm-lock.yaml
+**/node_modules/.bin
+**/.gitignore
+**/*.js.map
+**/.appveyor.yml
+**/.gitignore
+**/.gitmodules
+**/.gitattributes
+**/.pnpm-debug.log
+**/.travis.yml
+**/.eslintignore
+**/pnpm-workspace.yaml
+**/.vscode
+**/.github
+**/.prettierignore
+**/.prettierrc
+**/.prettierrc.json
+**/Cargo.lock
 
 client/src
 client/testFixture

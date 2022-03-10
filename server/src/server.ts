@@ -158,6 +158,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 		// TODO: suggest '*'
 		const guessedClasses: ECClass[] = query.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
 		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name.toLowerCase() === className);
+		// TODO: need to add implicit ECInstanceId
 		const guessedProperties = new Map<string, {propertyName: string; data: any}>();
 		for (const schemaName in suggestions.schemas) {
 			for (const className in suggestions.schemas[schemaName]) {
@@ -439,7 +440,6 @@ function main() {
 				// Tell the client that this server supports code completion.
 				completionProvider: {
 					resolveProvider: true,
-					triggerCharacters: ['.'] // for suggesting on stuff like `bis.`
 				}
 			}
 		};
