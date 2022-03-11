@@ -30,7 +30,8 @@ interface ExtensionSettings {
 }
 
 
-const extensionPackageJson = fse.readJsonSync(path.join(__dirname, "../package.json"));
+// need to go out twice to get the outer package.json
+const extensionPackageJson = fse.readJsonSync(path.join(__dirname, "../../package.json"));
 
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
