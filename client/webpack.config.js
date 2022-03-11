@@ -1,3 +1,5 @@
+const webpack = require("webpack");
+
 /** @type {import("webpack").Configuration} */
 module.exports = {
   // have to override output which will be incorrect main.ts

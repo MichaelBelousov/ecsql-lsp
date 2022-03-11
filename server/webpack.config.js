@@ -1,3 +1,4 @@
+const webpack = require("webpack");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 
 /** @type {import("webpack").Configuration} */
@@ -42,6 +43,9 @@ module.exports = {
           to: "node_modules/tree-sitter-sql/prebuilds",
         },
       ],
+    }),
+    new webpack.DefinePlugin({
+      "process.env.IN_WEBPACK": JSON.stringify(1), // expose whether we're in webpack for prebuildify/node-gyp-build using dependencies
     }),
   ],
 };
