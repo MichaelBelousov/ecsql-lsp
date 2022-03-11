@@ -79,7 +79,7 @@ export function getCurrentSelectStatement(
           .map((c) => c.node.text!),
       ]
       .map(fullName => {
-        const [schema, name] = fullName.split(".");
+        const [schema, name] = fullName.split(/[:.]/);
         return { schema, name };
       })
       .filter(({schema, name}) => name !== undefined && schema in suggestions.schemas && name in (suggestions.schemas[schema]?.classes ?? {}))
@@ -652,10 +652,10 @@ function main() {
 
     const suggestions = await suggestionsPromise;
 
-    const isClass = currentWord.match(/\.:/)
+    const isClass = currentWord.match(/[:.]/)
     if (isClass) {
       const qualifiedName = currentWord;
-      const [schemaName, className] = qualifiedName;
+      const [schemaName, className] = qualifiedName.split(/[:.]/);;
       const xmlData = suggestions.schemas[schemaName]?.classes[className]?.data;
       return xmlData && {
         contents: {
