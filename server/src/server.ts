@@ -243,6 +243,32 @@ export interface SourceQuery {
 	parsed: ParsedQuery;
 }
 
+// I use the fact that javascript's Map is insertion order to abuse it as a least-recently-used query cache
+// this really requires some benchmarking though
+class LruCache<K, V> /*implement Map<K, V>*/ {
+	private CAPACITY = 200;
+	private _map = new Map<K, V>();
+	get(k: K) {
+		const v = this._map.get(k);
+		// move to the end of the list
+		if (v !== undefined) {
+			this._map.delete(k);
+			this._map.set(k, v);
+		}
+		return v;
+	}
+	set(k: K, v: V) {
+		this._map.set(k, v);
+		if (this._map.size > this.CAPACITY) {
+			const leastRecentlyUsedKey = this._map.keys().next().value;
+			this._map.delete(leastRecentlyUsedKey);
+		}
+		return this;
+	}
+}
+
+const parsedQueriesCache = new LruCache<string, ParsedQuery>();
+
 export function findAllQueries(text: string): SourceQuery[] {
 	const results: SourceQuery[] = [];
 	for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
@@ -250,25 +276,27 @@ export function findAllQueries(text: string): SourceQuery[] {
 		const matchEnd = match.index! + match[0].length;
 		const literal = getNextStringLiteral(text, matchEnd);
 		if (literal) {
-			let ast: TreeSitter.Tree;
-			const source = literal.slice(1, -1);
-			try {
-				// TODO: provide the old tree and separate by `;` to do more performant re-parses
-				ast = parser.parse(source);
-			} catch {
-				continue;
+			const src = literal.slice(1, -1);
+			let parsed = parsedQueriesCache.get(src);
+			if (parsed === undefined) {
+				try {
+					// TODO: provide the old tree and separate by `;` to do more performant re-parses
+					const ast = parser.parse(src);
+					parsed = {
+						ast,
+						src,
+						selectData: (s: SuggestionsCache) =>  getCurrentSelectStatement(s, matchStart, ast),
+					}
+					parsedQueriesCache.set(src, parsed);
+				} catch {
+					continue;
+				}
 			}
 			results.push({
 				// FIXME: get actual location in literal finding
 				start: matchEnd,
 				end: matchEnd + literal.length,
-				parsed: {
-					src: source,
-					ast,
-					selectData(suggestions: SuggestionsCache) {
-						return getCurrentSelectStatement(suggestions, matchStart, ast);
-					},
-				}
+				parsed
 			});
 		}
 	}

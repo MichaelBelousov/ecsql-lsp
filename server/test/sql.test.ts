@@ -9,7 +9,15 @@ parser.setLanguage(TreeSitterSql);
 
 function sourceToQuery(source: string): SourceQuery {
   const ast = parser.parse(source);
-  return { ast, start: 0, end: source.length + 1, src: source, selectData: (s) => getCurrentSelectStatement(s, 0, ast) }
+  return {
+    parsed: {
+      ast,
+      src: source,
+      selectData: (s) => getCurrentSelectStatement(s, 0, ast)
+    },
+    start: 0,
+    end: source.length + 1,
+  }
 }
 
 /** takes a document with a >|< string meaning the cursor position is over the next character (is the next character),
@@ -53,7 +61,7 @@ describe("tree-sitter-sql", () => {
     const source = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT 1) AS col3 FROM some.table
     `);
-    const matches = query.matches(source.ast.rootNode);
+    const matches = query.matches(source.parsed.ast.rootNode);
     console.log("test2");
     const dealias = (obj: any) => (obj.type === "alias" ? obj.lastNamedChild : obj).text;
     expect(dealias(matches[0].captures[0].node)).to.equal("col1");
@@ -67,10 +75,10 @@ describe("getCurrentSelectStatement", () => {
     const source = sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
     `);
-    const [firstSelectOffset, secondSelectOffset] = [...source.src.matchAll(/SELECT/g)].map(m => m.index!);
-    const outerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), firstSelectOffset, source.ast);
+    const [firstSelectOffset, secondSelectOffset] = [...source.parsed.src.matchAll(/SELECT/g)].map(m => m.index!);
+    const outerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), firstSelectOffset, source.parsed.ast);
     expect(outerSelectResult?.tables).to.deep.equal(["some.table", "joiner"]);
-    const innerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), secondSelectOffset, source.ast);
+    const innerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), secondSelectOffset, source.parsed.ast);
     expect(innerSelectResult?.tables).to.deep.equal(["Y"]);
   });
 });
@@ -95,7 +103,7 @@ describe("suggestForQueryEdit", async () => {
     const suggestions = await buildTestSuggestions();
 
     expect(
-      suggestForQueryEdit(suggestions, query, query.src.indexOf("G"))
+      suggestForQueryEdit(suggestions, query, query.parsed.src.indexOf("G"))
     ).to.deep.equal(
       // FIXME: should not recommend an proeperty that is already selected (G)
       [{
@@ -115,7 +123,7 @@ describe("suggestForQueryEdit", async () => {
     );
 
     expect(
-      suggestForQueryEdit(suggestions, query, query.src.indexOf("A"))
+      suggestForQueryEdit(suggestions, query, query.parsed.src.indexOf("A"))
     ).to.deep.equal(
       // FIXME: should not recommend a table already in the FROM clause (A)
       [{
@@ -137,7 +145,7 @@ describe("suggestForQueryEdit", async () => {
     const suggestions = await buildTestSuggestions();
 
     expect(
-      suggestForQueryEdit(suggestions, query, query.src.length - 1)
+      suggestForQueryEdit(suggestions, query, query.parsed.src.length - 1)
     ).to.deep.equal(
       [{
         label: "MySchema.B",
