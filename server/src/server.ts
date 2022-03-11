@@ -23,6 +23,26 @@ export interface SelectStatementMatch {
 	tables: ECClass[];
 }
 
+// The example settings
+interface ExtensionSettings {
+	fallbackIModelUrl: string;
+	queryCallRegex: string;
+}
+
+
+const extensionPackageJson = fse.readJsonSync(path.join(__dirname, "../package.json"));
+
+
+// The global settings, used when the `workspace/configuration` request is not supported by the client.
+// Please note that this is not the case when using this server with the client provided in this example
+// but could happen with other clients.
+const defaultSettings: ExtensionSettings = {
+	queryCallRegex: extensionPackageJson.contributes.configuration.properties["ecsql-lsp.queryCallRegex"],
+	fallbackIModelUrl: extensionPackageJson.contributes.configuration.properties["ecsql-lsp.fallbackIModelUrl"],
+};
+let globalSettings: ExtensionSettings = defaultSettings;
+
+
 // TODO: may want to suggest tables when there is an error after a FROM
 export const selectStatementsQuery = new TreeSitter.Query(
 	TreeSitterSql,
@@ -465,28 +485,16 @@ function main() {
 		}
 	});
 
-	// The example settings
-	interface ExampleSettings {
-		maxNumberOfProblems: number;
-		fallbackIModelUrl: string;
-	}
-
-	// The global settings, used when the `workspace/configuration` request is not supported by the client.
-	// Please note that this is not the case when using this server with the client provided in this example
-	// but could happen with other clients.
-	const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000, fallbackIModelUrl: "" };
-	let globalSettings: ExampleSettings = defaultSettings;
-
 	// Cache the settings of all open documents
-	const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
+	const documentSettings: Map<string, Thenable<ExtensionSettings>> = new Map();
 
 	connection.onDidChangeConfiguration(change => {
 		if (hasConfigurationCapability) {
 			// Reset all cached document settings
 			documentSettings.clear();
 		} else {
-			globalSettings = <ExampleSettings>(
-				(change.settings.languageServerExample || defaultSettings)
+			globalSettings = (
+				(change.settings.ecsqlLanguageServer || defaultSettings) as ExtensionSettings
 			);
 		}
 
@@ -494,7 +502,7 @@ function main() {
 		//documents.all().forEach(validateTextDocument);
 	});
 
-	function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
+	function getDocumentSettings(resource: string): Thenable<ExtensionSettings> {
 		if (!hasConfigurationCapability) {
 			return Promise.resolve(globalSettings);
 		}
@@ -502,7 +510,7 @@ function main() {
 		if (!result) {
 			result = connection.workspace.getConfiguration({
 				scopeUri: resource,
-				section: 'languageServerExample'
+				section: 'ecsqlLanguageServer '
 			});
 			documentSettings.set(resource, result);
 		}

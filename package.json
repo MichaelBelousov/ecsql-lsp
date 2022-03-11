@@ -38,16 +38,15 @@
       "type": "object",
       "title": "ECSQL Language Server configuration",
       "properties": {
-        "languageServerExample.maxNumberOfProblems": {
-          "scope": "resource",
-          "type": "number",
-          "default": 100,
-          "description": "Controls the maximum number of problems produced by the server."
-        },
         "ecsql-lsp.fallbackIModelUrl": {
           "type": "string",
           "default": "",
           "description": "if the schema is unknown, try to find it in this iModel"
+        },
+        "ecsql-lsp.queryCallRegex": {
+          "type": "string",
+          "default": "(i[mM]odel|[dD]b)\\.(query|withPreparedStatment)",
+          "description": "pattern to match for calls to queries. This is a stopgap before using typescript's LSP to find it"
         }
       }
     }
@@ -57,6 +56,7 @@
     "bundle:server": "cd server && npm run bundle",
     "bundle:client": "cd client && npm run bundle",
     "package": "vsce package --yarn",
+    "publish": "vsce publish --yarn",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
     "watch": "tsc -b -w",
