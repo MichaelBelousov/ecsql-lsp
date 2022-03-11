@@ -595,23 +595,12 @@ function main() {
 		}
 	);
 
-	// TODO: use this sample for performance maybe... not sure it's more performant in our case
-	// This handler resolves additional information for the item selected in
-	// the completion list.
-	/*
+	// TODO: consider if it would be more performant to use this in some scenarios
 	connection.onCompletionResolve(
-		async (item: CompletionItem): CompletionItem => {
-			if (item.data === 1) {
-				item.detail = 'TypeScript details';
-				item.documentation = 'TypeScript documentation';
-			} else if (item.data === 2) {
-				item.detail = 'JavaScript details';
-				item.documentation = 'JavaScript documentation';
-			}
+		async (item: CompletionItem): Promise<CompletionItem> => {
 			return item;
 		}
 	);
-	*/
 
 	// Make the text document manager listen on the connection
 	// for open, change and close text document events
