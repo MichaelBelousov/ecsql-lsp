@@ -4,9 +4,12 @@ import * as xml2js from "xml2js";
 
 import * as TreeSitter from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
+import * as vscode from "vscode";
 
 // in the future read all unversioned .ecschema.xml files in the repo
-import bisCoreSchemaText from "./assets/BisCore.ecschema.xml";
+const bisCoreSchemaText = process.env.IN_WEBPACK
+  ? require("./assets/BisCore.ecschema.xml")
+  : fse.readFileSync(path.join(__dirname, "./assets/BisCore.ecschema.xml"));
 
 const parser = new TreeSitter();
 parser.setLanguage(TreeSitterSql);
@@ -656,27 +659,43 @@ function main() {
     if (isClass) {
       const qualifiedName = currentWord;
       const [schemaName, className] = qualifiedName.split(/[:.]/);;
-      const xmlData = suggestions.schemas[schemaName]?.classes[className]?.data;
+      const xmlData = suggestions.schemas[schemaName.toLowerCase()]?.classes[className.toLowerCase()]?.data;
+      /*
+      const contents = xmlData && new vscode.MarkdownString([
+        `[**${xmlData.$.typeName}**](https://www.itwinjs.org/reference/core-backend/elements/${xmlData.$.typeName.toLowerCase()})`,
+        // TODO: get the xml node name e.g. ECEntityClass to say whether this is an entity, or a struct class, etc
+        ...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
+        `${xmlData.$.description}`,
+      ].join('\n'));
+      if (contents) contents.isTrusted = true;
+      return contents && new vscode.Hover(contents);
+      */
       return xmlData && {
         contents: {
+          "language": "test",
           kind: 'markdown',
-          value: `#${xmlData.$.typeName}`
+          value: [
+            `[**${xmlData.$.typeName}**](https://www.itwinjs.org/reference/core-backend/elements/${xmlData.$.typeName.toLowerCase()})`,
             // TODO: get the xml node name e.g. ECEntityClass to say whether this is an entity, or a struct class, etc
-            + (xmlData.$.displayLabel && `##${xmlData.$.displayLabel}\n`)
-            + `${xmlData.$.description}`
+            ...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
+            `${xmlData.$.description}`,
+          ].join('\n')
         }
       };
     } else {
       const propertyKey = currentWord.toLowerCase();
       const maybeOwningClass: ECClass | undefined = suggestions.propertyToContainingClasses.get(propertyKey)?.values().next()?.value;
-      const xmlData = maybeOwningClass && suggestions.schemas[maybeOwningClass.schema]?.classes[maybeOwningClass.name]?.properties[propertyKey];
+      const xmlData = maybeOwningClass && suggestions.schemas[maybeOwningClass.schema.toLowerCase()]?.classes[maybeOwningClass.name.toLowerCase()]?.properties[propertyKey];
       return xmlData && {
         contents: {
+          
           kind: 'markdown',
-          value: `#${xmlData.$.propertyName}`
-            + (xmlData.$.typeName && ` *${xmlData.$.typeName}*\n`)
-            + (xmlData.$.displayLabel && `##${xmlData.$.displayLabel}\n`)
-            + `${xmlData.$.description}`
+          // TODO: can provide links to the documentation using:
+          value: [`**${xmlData.$.propertyName}**`,
+            ...(xmlData.$.typeName ? [`*${xmlData.$.typeName}*`] : []),
+            ...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
+            `${xmlData.$.description}`
+          ].join('\n')
         }
       };
     }

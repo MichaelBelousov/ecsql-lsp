@@ -23,6 +23,9 @@
       "preLaunchTask": {
         "type": "npm",
         "script": "watch"
+      },
+      "env": {
+        "NO_WEBPACK": "1"
       }
     },
     {

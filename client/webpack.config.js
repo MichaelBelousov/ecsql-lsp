@@ -25,4 +25,9 @@ module.exports = {
   },
   target: "node",
   devtool: process.env.NODE_ENV === "development" ? "source-map" : undefined,
+  plugins: [
+    new webpack.DefinePlugin({
+      "process.env.IN_WEBPACK": true, // expose whether we're in webpack for ourkk
+    }),
+  ],
 };

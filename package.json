@@ -31,7 +31,7 @@
   "activationEvents": [
     "onLanguage:typescript"
   ],
-  "main": "./client/dist/main.js",
+  "main": "./client/index.js",
   "icon": "icon.png",
   "contributes": {
     "configuration": {
@@ -55,6 +55,10 @@
     "bundle": "npm run bundle:client && npm run bundle:server",
     "bundle:server": "cd server && npm run bundle",
     "bundle:client": "cd client && npm run bundle",
+    "// TODO: get NODE_ENV=development webpacked output to be debuggable instead": "",
+    "dev-build": "npm run dev-build:client && npm run dev-build:server",
+    "dev-build:client": "cd client && npm run build",
+    "dev-build:server": "cd server && npm run build",
     "package": "vsce package --yarn",
     "publish": "vsce publish --yarn",
     "vscode:prepublish": "npm run compile",

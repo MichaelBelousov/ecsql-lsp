@@ -65,7 +65,7 @@
   "scripts": {
     "build": "npm run build:typescript && npm run build:copy-assets",
     "build:typescript": "tsc 1>&2 --outDir lib",
-    "build:copy-assets": "echo nope && exit 0; cp -r src/assets lib/assets",
+    "build:copy-assets": "cp -r src/assets lib/",
     "bundle": "webpack --config webpack.config.js",
     "watch": "tsc 1>&2 --outDir lib -w",
     "clean": "rimraf lib",

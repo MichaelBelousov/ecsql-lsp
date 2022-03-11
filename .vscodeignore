@@ -2,6 +2,7 @@
 **
 #
 # white list
+!client/index.js
 !client/dist
 !server/dist
 !dist/
