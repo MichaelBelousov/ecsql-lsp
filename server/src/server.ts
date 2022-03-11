@@ -1,7 +1,3 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
 
 import * as fse from "fs-extra";
 import * as path from "path";
@@ -104,7 +100,7 @@ export const queriedPropsQuery = new TreeSitter.Query(
 
 /** get the names of properties queried for */
 export function getQueriedProperties(query: SourceQuery): string[] {
-	const matches = queriedPropsQuery.matches(query.ast.rootNode);
+	const matches = queriedPropsQuery.matches(query.parsed.ast.rootNode);
 	return matches.map((match) =>
     match.captures[0].node.type === "alias"
       ? match.captures[0].node.namedChild(0)!.text!
@@ -122,7 +118,7 @@ export const queriedNamesQuery = new TreeSitter.Query(
  * @note this currently gets all names, not just those of aliases! It is a misnomer and I should rename it
  */
 export function getAliasNames(query: SourceQuery): string[] {
-	const matches = queriedNamesQuery.matches(query.ast.rootNode);
+	const matches = queriedNamesQuery.matches(query.parsed.ast.rootNode);
 	return matches.map((match) =>
     match.captures[0].node.type === "alias"
       ? match.captures[0].node.namedChild(0)!.text!
@@ -150,7 +146,7 @@ type SqlKeywordString = "FROM" | "JOIN" | "SELECT" | "ON" | "WHERE" | "GROUP BY"
 
 export function getQueryEditClauseType(query: SourceQuery, cursor: number): SqlKeywordString | undefined {
 	// TODO: use lazy-from's .last here
-	const prevKeyword = [...query.src.slice(0, cursor).matchAll(/FROM|JOIN|SELECT|ON|WHERE|GROUP BY|;|\)/g)].pop();
+	const prevKeyword = [...query.parsed.src.slice(0, cursor).matchAll(/FROM|JOIN|SELECT|ON|WHERE|GROUP BY|;|\)/g)].pop();
 	return prevKeyword?.[0] as undefined | SqlKeywordString;
 }
 
@@ -161,7 +157,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	if (editingClauseType === undefined)
 		return undefined;
 	if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-		const tables = query.selectData(suggestions)?.tables;
+		const tables = query.parsed.selectData(suggestions)?.tables;
 		return guessClasses(suggestions, query, prefix)
 		.filter((cls) => !tables || !tables.some(t => t.name === cls.name && t.schema === cls.schema))
 		.map((ecclass) => {
@@ -180,7 +176,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	} else if (isEditingSelectClause || isEditingConditionClause) {
 		// TODO: do not suggest properties that they already have listed
 		// TODO: suggest '*'
-		const guessedClasses: ECClass[] = query.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
+		const guessedClasses: ECClass[] = query.parsed.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
 		const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name.toLowerCase() === className);
 		// TODO: need to add implicit ECInstanceId
 		const guessedProperties = new Map<string, {propertyName: string; data: any}>();
@@ -235,12 +231,16 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 	}
 }
 
-export interface SourceQuery {
-	start: number;
-	end: number;
+interface ParsedQuery {
 	ast: TreeSitter.Tree;
 	src: string;
 	selectData(s: SuggestionsCache): SelectStatementMatch | undefined;
+}
+
+export interface SourceQuery {
+	start: number;
+	end: number;
+	parsed: ParsedQuery;
 }
 
 export function findAllQueries(text: string): SourceQuery[] {
@@ -262,11 +262,13 @@ export function findAllQueries(text: string): SourceQuery[] {
 				// FIXME: get actual location in literal finding
 				start: matchEnd,
 				end: matchEnd + literal.length,
-				src: source,
-				ast,
-				selectData(suggestions: SuggestionsCache) {
-					return getCurrentSelectStatement(suggestions, matchStart, ast);
-				},
+				parsed: {
+					src: source,
+					ast,
+					selectData(suggestions: SuggestionsCache) {
+						return getCurrentSelectStatement(suggestions, matchStart, ast);
+					},
+				}
 			});
 		}
 	}
@@ -461,7 +463,8 @@ function main() {
 				// Tell the client that this server supports code completion.
 				completionProvider: {
 					resolveProvider: true,
-				}
+				},
+				hoverProvider: true,
 			}
 		};
 		if (hasWorkspaceFolderCapability) {
@@ -580,11 +583,6 @@ function main() {
 		connection.console.log('We received a file change event');
 	});
 
-	// FIXME: need to force set the user's  "editor.quickSuggestions": { "strings" }
-	// or have a button to help them do it
-
-
-	// This handler provides the initial list of the completion items.
 	connection.onCompletion(
 		async (docPos: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 			const fullDoc = documents.get(docPos.textDocument.uri)!;
@@ -594,6 +592,19 @@ function main() {
 			return suggestQueryEditInDocument(suggestions, text, offset);
 		}
 	);
+
+	connection.onHover((hoverParams, cancellationToken, workProgress, resultProgress) => {
+		const { textDocument, position } = hoverParams;
+		const fullDoc = documents.get(textDocument.uri)!;
+		const offset = fullDoc.offsetAt(position);
+		return {
+			contents: {
+				kind: 'markdown',
+				value: `
+				`
+			}
+		};
+	});
 
 	// TODO: consider if it would be more performant to use this in some scenarios
 	connection.onCompletionResolve(
