@@ -83,11 +83,11 @@ export function getCurrentSelectStatement(
 				const [schema, name] = fullName.split(".");
 				return { schema, name };
 			})
-			.filter(({schema, name}) => name !== undefined && schema in suggestions.schemas && name in suggestions.schemas[schema])
+			.filter(({schema, name}) => name !== undefined && schema in suggestions.schemas && name in (suggestions.schemas[schema]?.classes ?? {}))
 			.map(({schema, name}) => new ECClass({
 				schema,
 				name,
-				data: suggestions.schemas[schema][name],
+				data: suggestions.schemas[schema]!.classes[name],
 			})),
     }
   );
@@ -181,11 +181,11 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
 		// TODO: need to add implicit ECInstanceId
 		const guessedProperties = new Map<string, {propertyName: string; data: any}>();
 		for (const schemaName in suggestions.schemas) {
-			for (const className in suggestions.schemas[schemaName]) {
+			for (const className in suggestions.schemas[schemaName]?.classes) {
 				if (!includeClass(className)) continue;
-				const classSuggestions = suggestions.schemas[schemaName][className];
-				for (const propertyName in classSuggestions) {
-					const property = classSuggestions[propertyName];
+				const classProperties = suggestions.schemas[schemaName]!.classes[className]?.properties;
+				for (const propertyName in classProperties) {
+					const property = classProperties[propertyName];
 					const propertyKey = propertyName.toLowerCase();
 					if (prefix && !propertyKey.startsWith(prefix.toLowerCase())) continue;
 					// TODO: need to provide priority to collisions (e.g. least derived class)
@@ -360,10 +360,16 @@ export interface SuggestionsCache {
 
 	schemas: {
 		[schemaName: string]: {
-			[className: string]: {
-				[propertyName: string]: any;
+			data: any,
+			classes: {
+				[className: string]: {
+					data: any;
+					properties: {
+						[propertyName: string]: any | undefined;
+					}
+				} | undefined; // FIXME: why doesn't the `?` syntax such as in Partial<> not work here?
 			}
-		}
+		} | undefined;
 	}
 }
 
@@ -373,7 +379,7 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
 	const schemaName: string = schemaXml.ECSchema.$.schemaName;
 	const schemaAlias: string = schemaXml.ECSchema.$.alias;
 	suggestions.schemaAliases.set(schemaName, schemaAlias);
-	const schemaSuggestions: SuggestionsCache["schemas"][string] = {};
+	const schemaSuggestions: SuggestionsCache["schemas"][string] = { data: schemaXml, classes: {}};
 	suggestions.schemas[schemaName.toLowerCase()] = schemaSuggestions;
 	suggestions.schemas[schemaAlias.toLowerCase()] = schemaSuggestions;
 
@@ -383,11 +389,12 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
 	function resolveClass(className: string) {
 		if (resolvedClasses.has(className)) return;
 		const classXml = unresolvedClasses.get(className);
-		const classSuggestions: SuggestionsCache["schemas"][string][string] = {};
+		// AAAHH: this is a terrible type, need to break up the nested types in SuggestionsCache
+		const classSuggestions: NonNullable<NonNullable<SuggestionsCache["schemas"][string]>["classes"][string]> = { data: classXml, properties: {} };
 		for (const xmlPropType of ["ECProperty", "ECStructProperty", "ECNavigationProperty", "ECArrayProperty"]) {
 			for (const prop of classXml?.[xmlPropType] ?? []) {
 				const propName: string = prop.$.propertyName;
-				classSuggestions[propName.toLowerCase()] = prop;
+				classSuggestions.properties[propName.toLowerCase()] = prop;
 				let thisPropNameContainingClasses = suggestions.propertyToContainingClasses.get(propName.toLowerCase());
 				if (thisPropNameContainingClasses === undefined) {
 					thisPropNameContainingClasses = new Set();
@@ -398,12 +405,12 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
 		}
 		for (const baseClassName of classXml?.BaseClass ?? []) {
 			if (!resolvedClasses.has(baseClassName.toLowerCase())) resolveClass(baseClassName);
-			for (const baseClassPropName in suggestions.schemas[schemaName.toLowerCase()][baseClassName.toLowerCase()]) {
-				const baseClassProp = suggestions.schemas[schemaName.toLowerCase()][baseClassName.toLowerCase()][baseClassPropName.toLowerCase()];
-				classSuggestions[baseClassPropName.toLowerCase()] = baseClassProp;
+			for (const baseClassPropName in suggestions.schemas[schemaName.toLowerCase()]?.classes[baseClassName.toLowerCase()]?.properties) {
+				const baseClassProp = suggestions.schemas[schemaName.toLowerCase()]?.classes[baseClassName.toLowerCase()]?.properties[baseClassPropName.toLowerCase()];
+				classSuggestions.properties[baseClassPropName.toLowerCase()] = baseClassProp;
 			}
 		}
-		suggestions.schemas[schemaName.toLowerCase()][className.toLowerCase()] = classSuggestions;
+		suggestions.schemas[schemaName.toLowerCase()]!.classes[className.toLowerCase()] = classSuggestions;
 		resolvedClasses.set(className, classSuggestions);
 		unresolvedClasses.delete(className);
 		return classXml;
@@ -621,17 +628,59 @@ function main() {
 		}
 	);
 
-	connection.onHover((hoverParams, cancellationToken, workProgress, resultProgress) => {
+	connection.onHover(async (hoverParams) => {
 		const { textDocument, position } = hoverParams;
 		const fullDoc = documents.get(textDocument.uri)!;
+		const text = fullDoc.getText();
 		const offset = fullDoc.offsetAt(position);
-		return {
-			contents: {
-				kind: 'markdown',
-				value: `
-				`
-			}
-		};
+
+		/*
+		// TODO: I need the query to be able to tell from which table/ecclass to choose the owner of the current word
+		const queries = findAllQueries(text);
+		if (queries.length === 0) return;
+
+		const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);
+		if (queryWeAreIn === undefined) return;
+
+		const offsetInQuery = offset - queryWeAreIn.start - 1; // TODO: double check this...
+		*/
+
+		const textBeforePos = text.slice(0, offset);
+		const textAfterPos = text.slice(offset);
+		const backHalfOfWord = /[\w.]+$/.exec(textBeforePos)?.[0] ?? "";
+		const frontHalfOfWord = /^[\w.]+/.exec(textAfterPos)?.[0] ?? "";
+		const currentWord = backHalfOfWord + frontHalfOfWord;
+
+		const suggestions = await suggestionsPromise;
+
+		const isClass = currentWord.match(/\.:/)
+		if (isClass) {
+			const qualifiedName = currentWord;
+			const [schemaName, className] = qualifiedName;
+			const xmlData = suggestions.schemas[schemaName]?.classes[className]?.data;
+			return xmlData && {
+				contents: {
+					kind: 'markdown',
+					value: `#${xmlData.$.typeName}`
+						// TODO: get the xml node name e.g. ECEntityClass to say whether this is an entity, or a struct class, etc
+						+ (xmlData.$.displayLabel && `##${xmlData.$.displayLabel}\n`)
+						+ `${xmlData.$.description}`
+				}
+			};
+		} else {
+			const propertyKey = currentWord.toLowerCase();
+			const maybeOwningClass: ECClass | undefined = suggestions.propertyToContainingClasses.get(propertyKey)?.values().next()?.value;
+			const xmlData = maybeOwningClass && suggestions.schemas[maybeOwningClass.schema]?.classes[maybeOwningClass.name]?.properties[propertyKey];
+			return xmlData && {
+				contents: {
+					kind: 'markdown',
+					value: `#${xmlData.$.propertyName}`
+						+ (xmlData.$.typeName && ` *${xmlData.$.typeName}*\n`)
+						+ (xmlData.$.displayLabel && `##${xmlData.$.displayLabel}\n`)
+						+ `${xmlData.$.description}`
+				}
+			};
+		}
 	});
 
 	// TODO: consider if it would be more performant to use this in some scenarios
