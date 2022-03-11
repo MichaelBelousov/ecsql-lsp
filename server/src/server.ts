@@ -539,7 +539,7 @@ function main() {
 
 		let problems = 0;
 		const diagnostics: Diagnostic[] = [];
-		while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
+		while ((m = pattern.exec(text))) {
 			problems++;
 			const range = {
 					start: textDocument.positionAt(m.index),
