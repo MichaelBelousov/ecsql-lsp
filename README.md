@@ -6,6 +6,21 @@ Currently as a minimum viable implementation it uses a configured regex to searc
 `query` or `withPreparedStatement` and then tries to the parse the following string literal as a SQL query.
 It will then provide some auto-completion depending on where your cursor is in the query.
 
+
+## USAGE REQUIREMENT
+
+At the moment, you can only get auto complete in your ECSQL in vscode by setting the following vscode setting.
+
+```json
+{
+  "editor.quickSuggestions": {
+    "strings": true
+  }
+}
+```
+
+In the future this should not be necessary to set yourself.
+
 ## Features
 
 - auto-complete new columns in `SELECT` statements based on which tables you are querying
