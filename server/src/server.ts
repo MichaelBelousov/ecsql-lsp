@@ -8,7 +8,7 @@ import * as TreeSitterSql from "tree-sitter-sql";
 
 // in the future read all unversioned .ecschema.xml files in the repo
 const bisCoreSchemaText = process.env.IN_WEBPACK
-  ? require("./assets/BisCore.ecschema.xml")
+  ? require("./assets/BisCore.ecschema.xml").default
   : fse.readFileSync(path.join(__dirname, "./assets/BisCore.ecschema.xml"));
 
 const parser = new TreeSitter();
@@ -475,8 +475,10 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
   }
 
   for (const className of unresolvedClasses.keys()) {
-    resolveClass(className)
+    resolveClass(className);
   }
+  suggestions.propertyToContainingClasses.set("ECInstanceId".toLowerCase(), new Set(Array.from(resolvedClasses.values(), c => c.data.$.typeName)));
+  suggestions.propertyToContainingClasses.set("ECClassId".toLowerCase(), new Set(Array.from(resolvedClasses.values(), c => c.data.$.typeName)));
 }
 
 export async function buildSuggestions() {
