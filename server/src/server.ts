@@ -180,7 +180,6 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
     // TODO: suggest '*'
     const guessedClasses: ECClass[] = query.parsed.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
     const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name.toLowerCase() === className);
-    // TODO: need to add implicit ECInstanceId
     const guessedProperties = new Map<string, {propertyName: string; data: any}>();
     for (const schemaName in suggestions.schemas) {
       for (const className in suggestions.schemas[schemaName]?.classes) {
@@ -403,6 +402,21 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
           suggestions.propertyToContainingClasses.set(propName.toLowerCase(), thisPropNameContainingClasses);
         }
         thisPropNameContainingClasses.add(new ECClass({ schema: schemaName, name: className, data: classXml }));
+      }
+      // implicit system properties
+      classSuggestions.properties["ECInstanceId".toLowerCase()] = {
+        $: {
+          propertyName: "ECInstanceId",
+          typeName: "integer",
+          description: "The unique identifier for an ECInstance",
+        }
+      }
+      classSuggestions.properties["ECClassId".toLowerCase()] = {
+        $: {
+          propertyName: "ECClassId",
+          typeName: "string",
+          description: "The system id of the ECClass. Uniquely identifies an ECClass in the iModel.",
+        }
       }
     }
     for (const baseClassName of classXml?.BaseClass ?? []) {

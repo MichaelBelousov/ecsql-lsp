@@ -29,7 +29,8 @@ In the future this should not be necessary to set yourself.
 
 ## TODO
 
-- on-hover determine from which table a column must be from and provide the documentation of the most-derived class
+- on-hover determine from which table a column must be from and provide the documentation of the most-derived class,
+  currently just finds the first matching property
 - don't limit `FROM` auto-complete to tables that contain the `SELECT`ed attributes, instead prioritize those and the list the rest.
 - process more than just the BisCore schema
 
