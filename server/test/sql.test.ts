@@ -35,6 +35,7 @@ async function buildTestSuggestions() {
     schemas: {},
     propertyToContainingClasses: new Map(),
     schemaAliases: new Map(),
+    schemaNames: new Map(),
   };
 
   await processSchemaForSuggestions(`<?xml version="1.0" encoding="UTF-8"?>

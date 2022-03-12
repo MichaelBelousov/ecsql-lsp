@@ -76,21 +76,33 @@ export function getCurrentSelectStatement(
         .filter((c) => c.name === "joins")
         .map((c) => c.node),
       tables: [
-        current.captures[2 /*from-name*/].node.text!,
-        ...current.captures
-          .filter((c) => c.name === "join-name")
-          .map((c) => c.node.text!),
+        //current.captures[2 /*from-name|join-name*/].node.text!,
+        ...matches
+          .map((m) =>
+            m.captures
+              .filter((c) => c.name === "join-name" || c.name === "from-name")
+              .map((c) => c.node.text!)
+          )
+          .flat(),
       ]
-      .map(fullName => {
-        const [schema, name] = fullName.split(/[:.]/);
-        return { schema, name };
-      })
-      .filter(({schema, name}) => name !== undefined && schema in suggestions.schemas && name in (suggestions.schemas[schema]?.classes ?? {}))
-      .map(({schema, name}) => new ECClass({
-        schema,
-        name,
-        data: suggestions.schemas[schema]!.classes[name],
-      })),
+        .map((fullName) => {
+          const [schema, name] = fullName.split(/[:.]/);
+          return { schema: suggestions.schemaNames.get(schema.toLowerCase()) ?? schema, name };
+        })
+        .filter(
+          ({ schema, name }) =>
+            name !== undefined &&
+            schema.toLowerCase() in suggestions.schemas &&
+            name.toLowerCase() in (suggestions.schemas[schema.toLowerCase()]?.classes ?? {})
+        )
+        .map(
+          ({ schema, name }) =>
+            new ECClass({
+              schema,
+              name,
+              data: suggestions.schemas[schema.toLowerCase()]!.classes[name.toLowerCase()],
+            })
+        ),
     }
   );
 }
@@ -152,6 +164,17 @@ export function getQueryEditClauseType(query: SourceQuery, cursor: number): SqlK
   return prevKeyword?.[0] as undefined | SqlKeywordString;
 }
 
+function uniqueClasses(classes: ECClass[]): ECClass[] {
+  const found = new Set<string>();
+  const result = [];
+  for (const c of classes) {
+    if (found.has(c.key)) continue;
+    found.add(c.key);
+    result.push(c);
+  }
+  return result;
+}
+
 export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number, prefix?: string): CompletionItem[] | undefined {
   const editingClauseType = getQueryEditClauseType(query, cursor);
   const isEditingSelectClause = editingClauseType === "SELECT";
@@ -159,22 +182,38 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
   if (editingClauseType === undefined)
     return undefined;
   if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-    const tables = query.parsed.selectData(suggestions)?.tables;
-    return guessClasses(suggestions, query, prefix)
-    .filter((cls) => !tables || !tables.some(t => t.name === cls.name && t.schema === cls.schema))
-    .map((ecclass) => {
-      const usingAlias = !prefix?.startsWith(ecclass.schema);
-      const schemaIdent = usingAlias ? ecclass.alias(suggestions) : ecclass.schema;
-      const fullClassRef = `${schemaIdent}.${ecclass.name}`;
-      return {
-        label: fullClassRef,
-        insertText: fullClassRef,
-        kind: CompletionItemKind.Class,
-        //data: `${schemaName}.${className}.${propertyName}`, // use lodash.get if doing this?
-        detail: ecclass.data.$.displayLabel,
-        documentation: ecclass.data.$.description,
-      };
-    });
+    const tableKeys = new Set(query.parsed.selectData(suggestions)?.tables.map(t => t.key));
+    const fromSelectionGuessedClasses = guessClasses(suggestions, query, prefix);
+    const allClasses = Object.values(suggestions.schemas) // NOTE: this creates duplicate classes due to alias entries in the suggestion cache
+      .map((s) =>
+        Object.values(s!.classes).map(
+          (c) =>
+            new ECClass({
+              schema: s!.data.$.schemaName,
+              name: c!.data.$.typeName,
+              data: c!.data,
+            })
+        )
+      )
+      .flat();
+    // NOTE: the concat here does not appear to affect order
+    return uniqueClasses(fromSelectionGuessedClasses.concat(allClasses))
+      .filter((c) => !tableKeys.has(c.key))
+      .map((ecclass, i, arr) => {
+        const usingAlias = !prefix?.startsWith(ecclass.schema);
+        const schemaIdent = usingAlias ? ecclass.alias(suggestions) : ecclass.schema;
+        const fullClassRef = `${schemaIdent}.${ecclass.name}`;
+        return {
+          preselect: i === 0,
+          // HACK: is there no numerical way to sort?
+          sortText: String(arr.length - i).padStart(12, '0'),
+          label: fullClassRef,
+          insertText: fullClassRef,
+          kind: CompletionItemKind.Class,
+          detail: ecclass.data.$.displayLabel,
+          documentation: ecclass.data.$.description,
+        };
+      });
   } else if (isEditingSelectClause || isEditingConditionClause) {
     // TODO: do not suggest properties that they already have listed
     // TODO: suggest '*'
@@ -215,17 +254,14 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
             label: propertyName,
             insertText: propertyName,
             kind: CompletionItemKind.Field,
-            //data: `${schemaName}.${className}.${propertyName}`,
             detail: data.$.displayLabel,
             documentation: data.$.description,
         })),
         ...aliases.map((alias) => ({
             label: alias,
             insertText: alias,
-            kind: CompletionItemKind.Field,
-            // TODO: generate alias data from mapping
-            //detail: data.$.extendedTypeName ?? "no extended type",
-            //documentation: data.$.description,
+            kind: CompletionItemKind.Reference,
+            // TODO: for trivial aliases, use that property's data for detail/documentation
         })),
       ].filter(completion => !prefix || completion.insertText.startsWith(prefix));
     }
@@ -349,6 +385,7 @@ class ECClass implements ECClassProps {
   schema!: string;
   name!: string;
   data!: any;
+  get key() { return `${this.schema}.${this.name}}`; }
   public constructor(props: ECClassProps) {
     Object.assign(this, props);
   }
@@ -357,7 +394,10 @@ class ECClass implements ECClassProps {
 
 export interface SuggestionsCache {
   propertyToContainingClasses: Map<string, Set<ECClass>>,
+  /** name to alias map */
   schemaAliases: Map<string, string>;
+  /** alias to name map */
+  schemaNames: Map<string, string>;
 
   schemas: {
     [schemaName: string]: {
@@ -376,15 +416,17 @@ export interface SuggestionsCache {
 
 export async function processSchemaForSuggestions(schemaText: string, suggestions: SuggestionsCache): Promise<void> {
   const xmlParser = new xml2js.Parser();
-  const schemaXml = await xmlParser.parseStringPromise(schemaText);
-  const schemaName: string = schemaXml.ECSchema.$.schemaName;
-  const schemaAlias: string = schemaXml.ECSchema.$.alias;
+  const xml = await xmlParser.parseStringPromise(schemaText);
+  const schemaXml = xml.ECSchema;
+  const schemaName: string = schemaXml.$.schemaName;
+  const schemaAlias: string = schemaXml.$.alias;
   suggestions.schemaAliases.set(schemaName, schemaAlias);
+  suggestions.schemaNames.set(schemaAlias, schemaName);
   const schemaSuggestions: SuggestionsCache["schemas"][string] = { data: schemaXml, classes: {}};
   suggestions.schemas[schemaName.toLowerCase()] = schemaSuggestions;
   suggestions.schemas[schemaAlias.toLowerCase()] = schemaSuggestions;
 
-  const unresolvedClasses = new Map<string, any>(schemaXml.ECSchema.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
+  const unresolvedClasses = new Map<string, any>(schemaXml.ECEntityClass.map((xml: any) => [xml.$.typeName, xml]));
   const resolvedClasses = new Map<string, any>();
 
   function resolveClass(className: string) {
@@ -442,6 +484,7 @@ export async function buildSuggestions() {
     schemas: {},
     propertyToContainingClasses: new Map(),
     schemaAliases: new Map(),
+    schemaNames: new Map(),
   };
   await processSchemaForSuggestions(bisCoreSchemaText, suggestions);
   return suggestions;
