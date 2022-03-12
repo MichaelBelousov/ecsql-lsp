@@ -4,7 +4,7 @@ import * as xml2js from "xml2js";
 
 import * as TreeSitter from "tree-sitter";
 import * as TreeSitterSql from "tree-sitter-sql";
-import * as vscode from "vscode";
+//import * as vscode from "vscode";
 
 // in the future read all unversioned .ecschema.xml files in the repo
 const bisCoreSchemaText = process.env.IN_WEBPACK
@@ -672,14 +672,13 @@ function main() {
       */
       return xmlData && {
         contents: {
-          "language": "test",
           kind: 'markdown',
           value: [
-            `[**${xmlData.$.typeName}**](https://www.itwinjs.org/reference/core-backend/elements/${xmlData.$.typeName.toLowerCase()})`,
+            `**[${xmlData.$.typeName}](https://www.itwinjs.org/reference/core-backend/elements/${xmlData.$.typeName.toLowerCase()})**`,
             // TODO: get the xml node name e.g. ECEntityClass to say whether this is an entity, or a struct class, etc
             ...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
             `${xmlData.$.description}`,
-          ].join('\n')
+          ].join('\n\n')
         }
       };
     } else {
@@ -691,11 +690,10 @@ function main() {
           
           kind: 'markdown',
           // TODO: can provide links to the documentation using:
-          value: [`**${xmlData.$.propertyName}**`,
-            ...(xmlData.$.typeName ? [`*${xmlData.$.typeName}*`] : []),
-            ...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
+          value: [`**${xmlData.$.propertyName}**` + (xmlData.$.typeName ? ` \`${xmlData.$.typeName}\`` : ""),
+            //...(xmlData.$.displayLabel ? [`*${xmlData.$.displayLabel}*`] : []),
             `${xmlData.$.description}`
-          ].join('\n')
+          ].join('\n\n')
         }
       };
     }
