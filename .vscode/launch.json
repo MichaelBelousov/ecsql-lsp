@@ -34,7 +34,12 @@
       "name": "Attach to Server",
       "port": 6009,
       "restart": true,
-      "outFiles": ["${workspaceRoot}/server/lib/**/*.js"]
+      "outFiles": ["${workspaceRoot}/server/dist/*.js"],
+      "sourceMapPathOverrides": {
+        "meteor://💻app/*": "${workspaceFolder}/server/*",
+        "webpack:///./~/*": "${workspaceFolder}/server/node_modules/*",
+        "webpack://?:*/*": "${workspaceFolder}/server/*"
+      }
     },
     {
       "name": "Language Server E2E Test",

@@ -30,7 +30,8 @@ module.exports = {
     ],
   },
   target: "node",
-  devtool: process.env.NODE_ENV === "development" ? "source-map" : undefined,
+  devtool:
+    process.env.NODE_ENV === "development" ? "inline-source-map" : undefined,
   plugins: [
     new CopyWebpackPlugin({
       patterns: [

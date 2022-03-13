@@ -64,10 +64,8 @@
   },
   "scripts": {
     "build": "npm run build:typescript && npm run build:copy-assets",
-    "build:typescript": "tsc 1>&2 --outDir lib",
-    "build:copy-assets": "cp -r src/assets lib/",
     "bundle": "webpack --config webpack.config.js",
-    "watch": "tsc 1>&2 --outDir lib -w",
+    "watch": "webpack --config webpack.config.js --watch",
     "clean": "rimraf lib",
     "lint": "eslint --fix src/**/*.ts test/**/*.ts",
     "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" electron-mocha --timeout 100000 --require ts-node/register test/*.test.ts"

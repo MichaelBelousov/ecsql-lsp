@@ -31,7 +31,7 @@
   "activationEvents": [
     "onLanguage:typescript"
   ],
-  "main": "./client/index.js",
+  "main": "./client/dist/main.js",
   "icon": "icon.png",
   "contributes": {
     "configuration": {

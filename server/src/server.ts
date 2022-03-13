@@ -477,8 +477,18 @@ export async function processSchemaForSuggestions(schemaText: string, suggestion
   for (const className of unresolvedClasses.keys()) {
     resolveClass(className);
   }
-  suggestions.propertyToContainingClasses.set("ECInstanceId".toLowerCase(), new Set(Array.from(resolvedClasses.values(), c => c.data.$.typeName)));
-  suggestions.propertyToContainingClasses.set("ECClassId".toLowerCase(), new Set(Array.from(resolvedClasses.values(), c => c.data.$.typeName)));
+
+  for (const implicitProp of ["ECInstanceId", "ECClassId"]) {
+    suggestions.propertyToContainingClasses.set(
+      implicitProp.toLowerCase(),
+      new Set(
+        Array.from(
+          resolvedClasses.values(),
+          (c) => new ECClass({ schema: schemaName, name: c.data.$.typeName, data: c.data })
+        )
+      )
+    );
+  }
 }
 
 export async function buildSuggestions() {
