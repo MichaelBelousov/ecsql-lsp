@@ -45,7 +45,7 @@
         },
         "ecsql-lsp.queryCallRegex": {
           "type": "string",
-          "default": "(i[mM]odel|[dD]b)\\.(query|withPreparedStatment)",
+          "default": "(i[mM]odel|[dD]b)\\.(query|withPreparedStatement)",
           "description": "pattern to match for calls to queries. This is a stopgap before using typescript's LSP to find it"
         }
       }
