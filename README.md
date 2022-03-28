@@ -6,6 +6,7 @@ Currently as a minimum viable implementation it uses a configured regex to searc
 `query` or `withPreparedStatement` and then tries to the parse the following string literal as a SQL query.
 It will then provide some auto-completion depending on where your cursor is in the query.
 
+![demo gif](demo.gif)
 
 ## USAGE REQUIREMENT
 
@@ -33,6 +34,7 @@ In the future this should not be necessary to set yourself.
   currently just finds the first matching property
 - don't limit `FROM` auto-complete to tables that contain the `SELECT`ed attributes, instead prioritize those and the list the rest.
 - process more than just the BisCore schema
+- add implicit ECSourceId/ECTargetId properties to relationship table properties
 
 ## Building
 
