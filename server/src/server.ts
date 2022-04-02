@@ -2,22 +2,30 @@ import * as fse from "fs-extra";
 import * as path from "path";
 import * as xml2js from "xml2js";
 
-import * as TreeSitter from "tree-sitter";
-import * as TreeSitterSql from "tree-sitter-sql";
-//import * as vscode from "vscode";
+import * as WasmTreeSitter from "web-tree-sitter";
 
 // in the future read all unversioned .ecschema.xml files in the repo
 const bisCoreSchemaText = process.env.IN_WEBPACK
   ? require("./assets/BisCore.ecschema.xml").default
   : fse.readFileSync(path.join(__dirname, "./assets/BisCore.ecschema.xml"));
 
-const parser = new TreeSitter();
-parser.setLanguage(TreeSitterSql);
+const treeSitterSqlPromise = (async () => {
+  const treeSitterSqlWasmModulePath = path.join(__dirname, "../tree-sitter-sql.wasm");
+  await WasmTreeSitter.init();
+  const language = await WasmTreeSitter.Language.load(treeSitterSqlWasmModulePath);
+  return language;
+})();
+
+const parserPromise = treeSitterSqlPromise.then(treeSitterSql => {
+  const parser = new WasmTreeSitter();
+  parser.setLanguage(treeSitterSql);
+  return parser;
+});
 
 export interface SelectStatementMatch {
-  select: TreeSitter.SyntaxNode;
-  from: TreeSitter.SyntaxNode;
-  joins: TreeSitter.SyntaxNode[];
+  select: WasmTreeSitter.SyntaxNode;
+  from: WasmTreeSitter.SyntaxNode;
+  joins: WasmTreeSitter.SyntaxNode[];
   tables: ECClass[];
 }
 
@@ -43,16 +51,17 @@ let globalSettings: ExtensionSettings = defaultSettings;
 
 
 // TODO: may want to suggest tables when there is an error after a FROM
-export const selectStatementsQuery = new TreeSitter.Query(
-  TreeSitterSql,
+export const selectStatementsQueryPromise = treeSitterSqlPromise.then(treeSitterSql => 
+  treeSitterSql.query(
   "(select_statement (from_clause (identifier) @from-name)? @from (join_clause . (identifier) @join-name)* @joins) @select"
-);
+));
 
-export function getCurrentSelectStatement(
+export async function getCurrentSelectStatement(
   suggestions: SuggestionsCache,
   cursorOffsetInSql: number,
-  queryAst: TreeSitter.Tree
-): SelectStatementMatch | undefined {
+  queryAst: WasmTreeSitter.Tree
+): Promise<SelectStatementMatch | undefined> {
+  const selectStatementsQuery = await selectStatementsQueryPromise;
   const matches = selectStatementsQuery.matches(queryAst.rootNode);
   const current = matches.reduce(
     (prev, match) =>
@@ -66,7 +75,7 @@ export function getCurrentSelectStatement(
           ? match
           : prev
         : undefined,
-    undefined as TreeSitter.QueryMatch | undefined
+    undefined as WasmTreeSitter.QueryMatch | undefined
   );
   return (
     current && {
@@ -107,13 +116,15 @@ export function getCurrentSelectStatement(
   );
 }
 
-export const queriedPropsQuery = new TreeSitter.Query(
-  TreeSitterSql,
-  '(select_clause_body [(identifier) (alias (identifier) . "AS" . (identifier))] @col)'
+export const queriedPropsQueryPromise = treeSitterSqlPromise.then((treeSitterSql) =>
+  treeSitterSql.query(
+    '(select_clause_body [(identifier) (alias (identifier) . "AS" . (identifier))] @col)'
+  )
 );
 
 /** get the names of properties queried for */
-export function getQueriedProperties(query: SourceQuery): string[] {
+export async function getQueriedProperties(query: SourceQuery): Promise<string[]> {
+  const queriedPropsQuery = await queriedPropsQueryPromise; 
   const matches = queriedPropsQuery.matches(query.parsed.ast.rootNode);
   return matches.map((match) =>
     match.captures[0].node.type === "alias"
@@ -122,16 +133,18 @@ export function getQueriedProperties(query: SourceQuery): string[] {
   );
 }
 
-export const queriedNamesQuery = new TreeSitter.Query(
-  TreeSitterSql,
-  '(select_clause_body [(identifier) (alias (identifier) .)] @col)'
+export const queriedNamesQueryPromise = treeSitterSqlPromise.then((treeSitterSql) =>
+  treeSitterSql.query(
+    "(select_clause_body [(identifier) (alias (identifier) .)] @col)"
+  )
 );
 
 /**
  * get the alias names in a query
  * @note this currently gets all names, not just those of aliases! It is a misnomer and I should rename it
  */
-export function getAliasNames(query: SourceQuery): string[] {
+export async function getAliasNames(query: SourceQuery): Promise<string[]> {
+  const queriedNamesQuery = await queriedNamesQueryPromise;
   const matches = queriedNamesQuery.matches(query.parsed.ast.rootNode);
   return matches.map((match) =>
     match.captures[0].node.type === "alias"
@@ -141,8 +154,8 @@ export function getAliasNames(query: SourceQuery): string[] {
 }
 
 /** given a (partial) query, guess the classes it wants to query */
-export function guessClasses(suggestions: SuggestionsCache, query: SourceQuery, prefix?: string): ECClass[] {
-  const queriedProps = getQueriedProperties(query);
+export async function guessClasses(suggestions: SuggestionsCache, query: SourceQuery, prefix?: string): Promise<ECClass[]> {
+  const queriedProps = await getQueriedProperties(query);
   const classes = new Set<ECClass>();
   for (const queriedProp of queriedProps) {
     for (const ecclass of suggestions.propertyToContainingClasses.get(queriedProp.toLowerCase()) ?? []) {
@@ -175,15 +188,15 @@ function uniqueClasses(classes: ECClass[]): ECClass[] {
   return result;
 }
 
-export function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number, prefix?: string): CompletionItem[] | undefined {
+export async function suggestForQueryEdit(suggestions: SuggestionsCache, query: SourceQuery, cursor: number, prefix?: string): Promise<CompletionItem[]> {
   const editingClauseType = getQueryEditClauseType(query, cursor);
   const isEditingSelectClause = editingClauseType === "SELECT";
   const isEditingConditionClause = editingClauseType === "WHERE" || editingClauseType === "ON";
   if (editingClauseType === undefined)
-    return undefined;
+    return [];
   if (editingClauseType === "FROM" || editingClauseType === "JOIN") {
-    const tableKeys = new Set(query.parsed.selectData(suggestions)?.tables.map(t => t.key));
-    const fromSelectionGuessedClasses = guessClasses(suggestions, query, prefix);
+    const tableKeys = new Set((await query.parsed.selectData(suggestions))?.tables.map(t => t.key));
+    const fromSelectionGuessedClasses = await guessClasses(suggestions, query, prefix);
     const allClasses = Object.values(suggestions.schemas) // NOTE: this creates duplicate classes due to alias entries in the suggestion cache
       .map((s) =>
         Object.values(s!.classes).map(
@@ -217,7 +230,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
   } else if (isEditingSelectClause || isEditingConditionClause) {
     // TODO: do not suggest properties that they already have listed
     // TODO: suggest '*'
-    const guessedClasses: ECClass[] = query.parsed.selectData(suggestions)?.tables ?? guessClasses(suggestions, query);
+    const guessedClasses: ECClass[] = (await query.parsed.selectData(suggestions))?.tables ?? await guessClasses(suggestions, query);
     const includeClass = (className: string) => guessedClasses.length === 0 ? true : guessedClasses.some(c => c.name.toLowerCase() === className);
     const guessedProperties = new Map<string, {propertyName: string; data: any}>();
     for (const schemaName in suggestions.schemas) {
@@ -248,7 +261,7 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
         documentation: data.$.description,
       }));
     } else if (isEditingConditionClause) {
-      const aliases = getAliasNames(query);
+      const aliases = await getAliasNames(query);
       return [
         ...[...guessedProperties.values()].map(({propertyName, data}) => ({
             label: propertyName,
@@ -266,12 +279,13 @@ export function suggestForQueryEdit(suggestions: SuggestionsCache, query: Source
       ].filter(completion => !prefix || completion.insertText.startsWith(prefix));
     }
   }
+  return [];
 }
 
 interface ParsedQuery {
-  ast: TreeSitter.Tree;
+  ast: WasmTreeSitter.Tree;
   src: string;
-  selectData(s: SuggestionsCache): SelectStatementMatch | undefined;
+  selectData(s: SuggestionsCache): Promise<SelectStatementMatch | undefined>;
 }
 
 export interface SourceQuery {
@@ -306,7 +320,8 @@ class LruCache<K, V> /*implement Map<K, V>*/ {
 
 const parsedQueriesCache = new LruCache<string, ParsedQuery>();
 
-export function findAllQueries(text: string): SourceQuery[] {
+export async function findAllQueries(text: string): Promise<SourceQuery[]> {
+  const parser = await parserPromise;
   const results: SourceQuery[] = [];
   for (const match of text.matchAll(/(i[mM]odel|[dD]b)\.(query|withPreparedStatment)\(/g)) {
     const matchStart = match.index!;
@@ -314,7 +329,7 @@ export function findAllQueries(text: string): SourceQuery[] {
     const literal = getNextStringLiteral(text, matchEnd);
     if (literal) {
       const src = literal.slice(1, -1);
-      let parsed = parsedQueriesCache.get(src);
+      let parsed: ParsedQuery | undefined = parsedQueriesCache.get(src);
       if (parsed === undefined) {
         try {
           // TODO: provide the old tree and separate by `;` to do more performant re-parses
@@ -322,7 +337,7 @@ export function findAllQueries(text: string): SourceQuery[] {
           parsed = {
             ast,
             src,
-            selectData: (s: SuggestionsCache) =>  getCurrentSelectStatement(s, matchStart, ast),
+            selectData: async (s: SuggestionsCache) => await getCurrentSelectStatement(s, matchStart, ast),
           }
           parsedQueriesCache.set(src, parsed);
         } catch {
@@ -502,8 +517,8 @@ export async function buildSuggestions() {
   return suggestions;
 }
 
-export function suggestQueryEditInDocument(suggestions: SuggestionsCache, text: string, offset: number) {
-  const queries = findAllQueries(text);
+export async function suggestQueryEditInDocument(suggestions: SuggestionsCache, text: string, offset: number) {
+  const queries = await findAllQueries(text);
   if (queries.length === 0) return [];
 
   const queryWeAreIn = queries.find(q => q.start <= offset && q.end >= offset);

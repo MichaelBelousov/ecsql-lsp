@@ -24,10 +24,10 @@
     "node": "*"
   },
   "dependencies": {
-    "tree-sitter": "workspace:*",
     "tree-sitter-sql": "workspace:*",
     "vscode-languageserver": "^7.0.0",
     "vscode-languageserver-textdocument": "^1.0.1",
+    "web-tree-sitter": "^0.20.5",
     "xml2js": "^0.4.23"
   },
   "devDependencies": {
@@ -63,12 +63,12 @@
     "webpack-cli": "^4.9.2"
   },
   "scripts": {
-    "build": "npm run build:typescript && npm run build:copy-assets",
+    "build:tree-sitter-sql-wasm": "tree-sitter build-wasm node_modules/tree-sitter-sql",
     "bundle": "webpack --config webpack.config.js",
     "watch": "webpack --config webpack.config.js --watch",
     "clean": "rimraf lib",
     "lint": "eslint --fix src/**/*.ts test/**/*.ts",
-    "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" electron-mocha --timeout 100000 --require ts-node/register test/*.test.ts"
+    "test": "cross-env TS_NODE_PROJECT=\"test/tsconfig.json\" mocha --timeout 100000 --require ts-node/register test/*.test.ts"
   },
   "husky": {
     "hooks": {

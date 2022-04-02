@@ -1,13 +1,33 @@
-import * as TreeSitterParser from "tree-sitter";
-import * as TreeSitterSql from "tree-sitter-sql";
+import * as path from "path";
+import * as WasmTreeSitter from "web-tree-sitter";
 import { expect } from "chai";
-import { buildSuggestions, getCurrentSelectStatement, getQueriedProperties, processSchemaForSuggestions, SourceQuery, suggestForQueryEdit, SuggestionsCache, suggestQueryEditInDocument } from "../src/server";
+import {
+  buildSuggestions,
+  getCurrentSelectStatement,
+  getQueriedProperties,
+  processSchemaForSuggestions,
+  SourceQuery,
+  suggestForQueryEdit,
+  SuggestionsCache,
+  suggestQueryEditInDocument,
+} from "../src/server";
 import { CompletionItemKind } from 'vscode-languageserver';
 
-const parser = new TreeSitterParser();
-parser.setLanguage(TreeSitterSql);
+const treeSitterSqlPromise = (async () => {
+  const treeSitterSqlWasmModulePath = path.join(__dirname, "../tree-sitter-sql.wasm");
+  await WasmTreeSitter.init();
+  const language = await WasmTreeSitter.Language.load(treeSitterSqlWasmModulePath);
+  return language;
+})();
 
-function sourceToQuery(source: string): SourceQuery {
+const parserPromise = treeSitterSqlPromise.then(treeSitterSql => {
+  const parser = new WasmTreeSitter();
+  parser.setLanguage(treeSitterSql);
+  return parser;
+});
+
+async function sourceToQuery(source: string): Promise<SourceQuery> {
+  const parser = await parserPromise;
   const ast = parser.parse(source);
   return {
     parsed: {
@@ -26,7 +46,7 @@ function sourceToQuery(source: string): SourceQuery {
 async function expectFromQueryEditInDoc(doc: string, suggestions?: SuggestionsCache): Promise<Chai.Assertion> {
   const offset = doc.indexOf(">|<");
   doc = doc.replace(">|<", "");
-  return expect(suggestQueryEditInDocument(suggestions ?? await buildTestSuggestions(), doc, offset));
+  return expect(await suggestQueryEditInDocument(suggestions ?? await buildTestSuggestions(), doc, offset));
 }
 
 
@@ -58,8 +78,9 @@ async function buildTestSuggestions() {
 
 describe("tree-sitter-sql", () => {
   it("parsed column names", async () => {
-    const query = new TreeSitterParser.Query(TreeSitterSql, "(select_clause_body [(identifier) (alias)] @col)");
-    const source = sourceToQuery(`
+    const treeSitterSql = await treeSitterSqlPromise;
+    const query = treeSitterSql.query("(select_clause_body [(identifier) (alias)] @col)");
+    const source = await sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT 1) AS col3 FROM some.table
     `);
     const matches = query.matches(source.parsed.ast.rootNode);
@@ -73,20 +94,20 @@ describe("tree-sitter-sql", () => {
 
 describe("getCurrentSelectStatement", () => {
   it.skip("understand inner query", async () => {
-    const source = sourceToQuery(`
+    const source = await sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
     `);
     const [firstSelectOffset, secondSelectOffset] = [...source.parsed.src.matchAll(/SELECT/g)].map(m => m.index!);
-    const outerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), firstSelectOffset, source.parsed.ast);
+    const outerSelectResult = await getCurrentSelectStatement(await buildTestSuggestions(), firstSelectOffset, source.parsed.ast);
     expect(outerSelectResult?.tables).to.deep.equal(["some.table", "joiner"]);
-    const innerSelectResult = getCurrentSelectStatement(await buildTestSuggestions(), secondSelectOffset, source.parsed.ast);
+    const innerSelectResult = await getCurrentSelectStatement(await buildTestSuggestions(), secondSelectOffset, source.parsed.ast);
     expect(innerSelectResult?.tables).to.deep.equal(["Y"]);
   });
 });
 
 describe("getQueriedProperties", () => {
   it("simple test", async () => {
-    const query = sourceToQuery(`
+    const query = await sourceToQuery(`
       SELECT col1, col2 AS colB, (SELECT X from Y) AS col3 FROM some.table JOIN joiner ON col1=Id
     `);
     expect(getQueriedProperties(query)).to.deep.equal([
@@ -97,7 +118,7 @@ describe("getQueriedProperties", () => {
 
 describe("suggestForQueryEdit", async () => {
   it.skip("simple", async () => {
-    const query = sourceToQuery(`
+    const query = await sourceToQuery(`
       SELECT G FROM MySchema.A
     `);
 
@@ -139,7 +160,7 @@ describe("suggestForQueryEdit", async () => {
   });
 
   it.skip("empty from", async () => {
-    const query = sourceToQuery(`
+    const query = await sourceToQuery(`
       SELECT I FROM
     `);
 
