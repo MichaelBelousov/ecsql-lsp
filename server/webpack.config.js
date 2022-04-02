@@ -36,12 +36,8 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: "../node-tree-sitter/prebuilds",
-          to: "node_modules/node-tree-sitter/prebuilds",
-        },
-        {
-          from: "../tree-sitter-sql/prebuilds",
-          to: "node_modules/tree-sitter-sql/prebuilds",
+          from: "tree-sitter-sql.wasm",
+          to: "node_modules/tree-sitter-sql/tree-sitter-sql.wasm",
         },
       ],
     }),

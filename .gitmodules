@@ -1,6 +1,3 @@
 [submodule "tree-sitter-sql"]
 	path = tree-sitter-sql
 	url = https://github.com/MichaelBelousov/tree-sitter-sql.git
-[submodule "node-tree-sitter"]
-	path = node-tree-sitter
-	url = https://github.com/MichaelBelousov/node-tree-sitter.git
