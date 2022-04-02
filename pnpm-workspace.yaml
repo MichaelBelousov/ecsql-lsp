@@ -2,6 +2,3 @@
 packages:
   - client
   - server
-  - tree-sitter-sql
-  # exclude git repos in extension compilation output
-  - '!server/out/**'
