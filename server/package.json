@@ -63,7 +63,7 @@
     "webpack-cli": "^4.9.2"
   },
   "scripts": {
-    "build:tree-sitter-sql-wasm": "tree-sitter build-wasm node_modules/tree-sitter-sql",
+    "build:tree-sitter-sql-wasm": "tree-sitter build-wasm ../tree-sitter-sql",
     "bundle": "webpack --config webpack.config.js",
     "watch": "webpack --config webpack.config.js --watch",
     "clean": "rimraf lib",
