@@ -1,7 +1,7 @@
 {
   "name": "ecsql-lsp-server",
   "description": "a language server for the ECSQL language used by iTwin.js",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "author": {
     "name": "Michael Belousov",
     "email": "mikemikeb@protonmail.com"
