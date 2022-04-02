@@ -5,12 +5,19 @@ import * as xml2js from "xml2js";
 import * as WasmTreeSitter from "web-tree-sitter";
 
 // in the future read all unversioned .ecschema.xml files in the repo
-const bisCoreSchemaText = process.env.IN_WEBPACK
+const bisCoreSchemaText
+  = process.env.IN_WEBPACK
   ? require("./assets/BisCore.ecschema.xml").default
   : fse.readFileSync(path.join(__dirname, "./assets/BisCore.ecschema.xml"));
 
+const treeSitterSqlWasmModulePath =
+  path.join(__dirname,
+    process.env.IN_WEBPACK
+    ? require("../tree-sitter-sql.wasm").default
+    : "../tree-sitter-sql.wasm"
+  );
+
 const treeSitterSqlPromise = (async () => {
-  const treeSitterSqlWasmModulePath = path.join(__dirname, "../tree-sitter-sql.wasm");
   await WasmTreeSitter.init();
   const language = await WasmTreeSitter.Language.load(treeSitterSqlWasmModulePath);
   return language;

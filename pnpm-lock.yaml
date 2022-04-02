@@ -24,8 +24,6 @@ importers:
       prettier: ^2.5.1
       rimraf: ^3.0.2
       sinon: ^13.0.1
-      tree-sitter: workspace:*
-      tree-sitter-sql: workspace:*
       ts-loader: ^9.2.7
       ts-node: ^10.4.0
       typescript: ^4.5.2
@@ -37,8 +35,6 @@ importers:
       webpack-cli: ^4.9.2
       xml2js: ^0.4.23
     dependencies:
-      tree-sitter: link:node-tree-sitter
-      tree-sitter-sql: link:tree-sitter-sql
       vscode-languageclient: 7.0.0
       vscode-languageserver: 7.0.0
       vscode-languageserver-textdocument: 1.0.4
@@ -134,6 +130,7 @@ importers:
       eslint-config-prettier: ^8.3.0
       eslint-plugin-mocha: ^10.0.3
       eslint-plugin-prettier: ^4.0.0
+      file-loader: ^6.2.0
       fs-extra: ^10.0.0
       husky: ^7.0.4
       lint-staged: ^12.3.4
@@ -142,8 +139,7 @@ importers:
       raw-loader: ^4.0.2
       rimraf: ^3.0.2
       sinon: ^13.0.1
-      tree-sitter: workspace:*
-      tree-sitter-sql: workspace:*
+      tree-sitter-cli: ^0.20.6
       ts-loader: ^9.2.7
       ts-node: ^10.4.0
       typescript: ^4.5.2
@@ -154,8 +150,6 @@ importers:
       webpack-cli: ^4.9.2
       xml2js: ^0.4.23
     dependencies:
-      tree-sitter: link:../node-tree-sitter
-      tree-sitter-sql: link:../tree-sitter-sql
       vscode-languageserver: 7.0.0
       vscode-languageserver-textdocument: 1.0.4
       web-tree-sitter: 0.20.5
@@ -178,6 +172,7 @@ importers:
       eslint-config-prettier: 8.4.0_eslint@7.32.0
       eslint-plugin-mocha: 10.0.3_eslint@7.32.0
       eslint-plugin-prettier: 4.0.0_ed3ee7322ae0bc2e5488ce09e4400c60
+      file-loader: 6.2.0_webpack@5.70.0
       fs-extra: 10.0.1
       husky: 7.0.4
       lint-staged: 12.3.4
@@ -186,6 +181,7 @@ importers:
       raw-loader: 4.0.2_webpack@5.70.0
       rimraf: 3.0.2
       sinon: 13.0.1
+      tree-sitter-cli: 0.20.6
       ts-loader: 9.2.7_typescript@4.5.5+webpack@5.70.0
       ts-node: 10.5.0_ad16171857a0edcfc445c7bfcf336eb6
       typescript: 4.5.5
@@ -1996,6 +1992,17 @@ packages:
     engines: {node: ^10.12.0 || >=12.0.0}
     dependencies:
       flat-cache: 3.0.4
+    dev: true
+
+  /file-loader/6.2.0_webpack@5.70.0:
+    resolution: {integrity: sha512-qo3glqyTa61Ytg4u73GultjHGjdRyig3tG6lPtyX/jOEJvHif9uB0/OCI2Kif6ctF3caQTW2G5gym21oAsI4pw==}
+    engines: {node: '>= 10.13.0'}
+    peerDependencies:
+      webpack: ^4.0.0 || ^5.0.0
+    dependencies:
+      loader-utils: 2.0.2
+      schema-utils: 3.1.1
+      webpack: 5.70.0_webpack-cli@4.9.2
     dev: true
 
   /fill-range/7.0.1:
@@ -4177,6 +4184,12 @@ packages:
 
   /tree-sitter-cli/0.20.4:
     resolution: {integrity: sha512-G42x0Ev7mxA8WLUfZY+two5LIhPf6R/m7qDZtKxOzE77zXi6didNI/vf17kHaKaRXJrWnyCxHFaVQFO2LL81yg==}
+    hasBin: true
+    requiresBuild: true
+    dev: true
+
+  /tree-sitter-cli/0.20.6:
+    resolution: {integrity: sha512-tjbAeuGSMhco/EnsThjWkQbDIYMDmdkWsTPsa/NJAW7bjaki9P7oM9TkLxfdlnm4LXd1wR5wVSM2/RTLtZbm6A==}
     hasBin: true
     requiresBuild: true
     dev: true

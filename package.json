@@ -52,18 +52,17 @@
     }
   },
   "scripts": {
-    "bundle": "npm run bundle:client && npm run bundle:server",
-    "bundle:server": "cd server && npm run bundle",
-    "bundle:client": "cd client && npm run bundle",
-    "// TODO: get NODE_ENV=development webpacked output to be debuggable instead": "",
+    "build": "npm run build:client && npm run build:server",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
     "dev-build": "npm run dev-build:client && npm run dev-build:server",
-    "dev-build:client": "cd client && npm run build",
-    "dev-build:server": "cd server && npm run build",
+    "dev-build:client": "cd client && npm run dev-build",
+    "dev-build:server": "cd server && npm run dev-build",
     "package": "vsce package --yarn",
     "publish": "vsce publish --yarn",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
-    "watch": "tsc -b -w",
+    "watch": "cd server && npm run watch",
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
     "test": "echo these tests are not yet supported && exit 1 && sh ./scripts/e2e.sh"
   },
@@ -71,8 +70,6 @@
     "note that dependencies of the client and server must be hoisted here for vsce to find them"
   ],
   "dependencies": {
-    "tree-sitter": "workspace:*",
-    "tree-sitter-sql": "workspace:*",
     "vscode-languageclient": "^7.0.0",
     "vscode-languageserver": "^7.0.0",
     "vscode-languageserver-textdocument": "^1.0.1",

@@ -4,7 +4,8 @@ A language server and vscode extension for [ECSQL](https://www.itwinjs.org/learn
 
 Currently as a minimum viable implementation it uses a configured regex to search for calls on objects to
 `query` or `withPreparedStatement` and then tries to the parse the following string literal as a SQL query.
-It will then provide some auto-completion depending on where your cursor is in the query.
+It will then provide some auto-completion depending on where your cursor is in the query. You can customize the
+regex used to find queries.
 
 ![demo gif](demo.gif)
 
@@ -36,10 +37,9 @@ In the future this should not be necessary to set yourself.
 - process more than just the BisCore schema
 - add implicit ECSourceId/ECTargetId properties to relationship table properties
 
-## Building
+## Building the extension
 
 ```sh
-pnpm -r run prebuild
-pnpm run bundle
+pnpm run build
 pnpm run package
 ```

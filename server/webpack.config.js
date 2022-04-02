@@ -27,6 +27,10 @@ module.exports = {
         // TODO: move to webpack 5 asset modules
         use: "raw-loader",
       },
+      {
+        test: /\.wasm$/,
+        use: "file-loader",
+      },
     ],
   },
   target: "node",
@@ -38,6 +42,10 @@ module.exports = {
         {
           from: "tree-sitter-sql.wasm",
           to: "node_modules/tree-sitter-sql/tree-sitter-sql.wasm",
+        },
+        {
+          from: "node_modules/web-tree-sitter/tree-sitter.wasm",
+          to: "tree-sitter.wasm",
         },
       ],
     }),

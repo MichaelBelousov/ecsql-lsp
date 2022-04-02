@@ -22,10 +22,10 @@
       "outFiles": ["${workspaceRoot}/client/out/**/*.js"],
       "preLaunchTask": {
         "type": "npm",
-        "script": "watch"
+        "script": "dev-build"
       },
       "env": {
-        "NO_WEBPACK": "1"
+        "IN_WEBPACK": ""
       }
     },
     {
@@ -34,6 +34,19 @@
       "name": "Attach to Server",
       "port": 6009,
       "restart": true,
+      "outFiles": ["${workspaceRoot}/server/dist/*.js"],
+      "sourceMapPathOverrides": {
+        "meteor://💻app/*": "${workspaceFolder}/server/*",
+        "webpack:///./~/*": "${workspaceFolder}/server/node_modules/*",
+        "webpack://?:*/*": "${workspaceFolder}/server/*"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Server Standalone",
+      "program": "${workspaceRoot}/server/dist/main.js",
+      "args": ["--node-ipc"],
       "outFiles": ["${workspaceRoot}/server/dist/*.js"],
       "sourceMapPathOverrides": {
         "meteor://💻app/*": "${workspaceFolder}/server/*",

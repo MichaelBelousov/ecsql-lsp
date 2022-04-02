@@ -35,7 +35,9 @@
     "webpack-cli": "^4.9.2"
   },
   "scripts": {
-    "build": "tsc -b 1>&2",
-    "bundle": "webpack --config webpack.config.js"
+    "typecheck": "tsc --noEmit -b 1>&2",
+    "build": "webpack --config webpack.config.js",
+    "watch": "webpack --config webpack.config.js --watch",
+    "dev-build": "cross-env NODE_ENV=development webpack --config webpack.config.js"
   }
 }
